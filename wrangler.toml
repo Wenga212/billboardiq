@@ -1,0 +1,7 @@
+name = "billboardiq"
+compatibility_date = "2026-07-16"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "billboardiq-db"
+database_id = "80403077-0db6-48c6-9d8f-9f4a13ec3a08"
