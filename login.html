@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light dark" />
+<script>
+  try { var t = localStorage.getItem('bbiq-theme'); if (t === 'dark') document.documentElement.setAttribute('data-theme','dark'); } catch (e) {}
+</script>
+<title>Sign in — BillboardIQ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root, [data-theme="light"] {
+    --bg:#e9eae4; --panel:#f5f6f1; --panel-2:#e0e2d9; --line:#cdd1c4;
+    --text:#171a17; --muted:#67706a;
+    --accent:#cfec2f; --accent-ink:#151810; --accent-text:#5f7a00;
+    --green:#188544; --amber:#a3650a; --red:#cc3b3b;
+    --green-bg:rgba(24,133,68,.12); --amber-bg:rgba(163,101,10,.14); --red-bg:rgba(204,59,59,.12);
+    --shadow:0 8px 30px rgba(20,24,18,.18);
+  }
+  [data-theme="dark"] {
+    --bg:#0b0d0c; --panel:#121514; --panel-2:#181b1a; --line:#242827;
+    --text:#ecebe4; --muted:#6b7270;
+    --accent:#d4ff3a; --accent-ink:#0b0d0c; --accent-text:#d4ff3a;
+    --green:#4ade80; --amber:#fbbf24; --red:#f87171;
+    --green-bg:rgba(74,222,128,.12); --amber-bg:rgba(251,191,36,.12); --red-bg:rgba(248,113,113,.12);
+    --shadow:0 8px 30px rgba(0,0,0,.5);
+  }
+  [data-theme="light"] {
+    --bg:#e9eae4;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html.theming, html.theming * { transition: background-color .28s, color .28s, border-color .28s !important; }
+  body {
+    background:var(--bg); color:var(--text);
+    font-family:'DM Sans',sans-serif; font-size:14px;
+    min-height:100vh; min-height:100dvh;
+    display:flex; align-items:center; justify-content:center;
+    padding:20px; -webkit-font-smoothing:antialiased;
+  }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  .wrap { width:100%; max-width:420px; }
+  .brand { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .logo {
+    font-family:'Bebas Neue',sans-serif; font-size:26px; letter-spacing:2.5px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .logo::before { content:''; width:10px; height:10px; background:var(--accent); transform:rotate(45deg); }
+  .logo b { color:var(--accent-text); font-weight:400; }
+  .pill {
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px;
+    text-transform:uppercase; padding:6px 10px; border:1px solid var(--line);
+    color:var(--muted); background:var(--panel-2); cursor:pointer;
+  }
+  .pill:hover { color:var(--text); }
+
+  .card { background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); }
+  .card-head { padding:18px 22px 0; }
+  .card-head h1 { font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:2px; font-weight:400; }
+  .card-head p { color:var(--muted); font-size:12px; margin-top:4px; line-height:1.5; }
+  .card-body { padding:18px 22px 22px; }
+
+  .tabs { display:flex; border-bottom:1px solid var(--line); margin-top:14px; }
+  .tab {
+    flex:1; padding:10px; font-family:'JetBrains Mono',monospace; font-size:10px;
+    letter-spacing:1.5px; text-transform:uppercase; color:var(--muted);
+    border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tab.active { color:var(--text); border-bottom-color:var(--accent); }
+
+  label {
+    display:block; font-family:'JetBrains Mono',monospace; font-size:9px;
+    letter-spacing:1.5px; text-transform:uppercase; color:var(--muted);
+    margin:14px 0 6px;
+  }
+  input {
+    width:100%; background:var(--panel-2); border:1px solid var(--line);
+    color:var(--text); padding:11px 12px; font-family:'DM Sans',sans-serif; font-size:14px;
+  }
+  input:focus { outline:none; border-color:var(--accent); }
+  input.code {
+    font-family:'JetBrains Mono',monospace; font-size:26px; letter-spacing:12px;
+    text-align:center; padding:14px 6px;
+  }
+
+  .btn {
+    width:100%; background:var(--accent); color:var(--accent-ink);
+    padding:13px; font-weight:700; font-size:13px; letter-spacing:1px;
+    text-transform:uppercase; margin-top:18px; transition:transform .15s, filter .15s;
+  }
+  .btn:hover { transform:translateY(-1px); filter:brightness(1.05); }
+  .btn.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+  .btn.ghost:hover { border-color:var(--muted); transform:none; }
+  .btn[disabled] { opacity:.5; cursor:wait; transform:none; }
+
+  .err {
+    display:none; margin-top:14px; padding:10px 12px;
+    background:var(--red-bg); color:var(--red);
+    font-size:12px; border:1px solid var(--red); line-height:1.5;
+  }
+  .err.show { display:block; animation:rise .25s ease; }
+  .note { color:var(--muted); font-size:11px; margin-top:12px; line-height:1.6; }
+  .note a, .linkish { color:var(--accent-text); cursor:pointer; text-decoration:none; border-bottom:1px dotted var(--accent-text); }
+
+  .view { display:none; }
+  .view.show { display:block; animation:rise .3s ease; }
+  @keyframes rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+  /* MFA enroll */
+  .qr-tile { background:#fff; padding:14px; width:max-content; margin:16px auto 0; }
+  .secret-box {
+    margin-top:14px; padding:10px 12px; background:var(--panel-2); border:1px dashed var(--line);
+    font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px;
+    text-align:center; word-break:break-all; color:var(--accent-text); cursor:pointer;
+  }
+  .steps { margin-top:14px; color:var(--muted); font-size:12px; line-height:1.8; }
+  .steps b { color:var(--text); font-weight:600; }
+
+  /* signed in */
+  .me-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px; }
+  .me-name { font-weight:700; font-size:16px; }
+  .me-email { color:var(--muted); font-size:12px; margin-top:2px; }
+  .role {
+    font-family:'JetBrains Mono',monospace; font-size:9px; padding:4px 8px;
+    letter-spacing:1.5px; text-transform:uppercase; border-radius:2px;
+  }
+  .role.user { background:var(--green-bg); color:var(--green); }
+  .role.admin { background:var(--amber-bg); color:var(--amber); }
+  .role.superuser { background:var(--red-bg); color:var(--red); }
+  .mfa-badge {
+    display:inline-block; margin-top:12px; font-family:'JetBrains Mono',monospace;
+    font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:5px 9px;
+    border:1px solid var(--line); color:var(--muted);
+  }
+  .mfa-badge.on { color:var(--green); border-color:var(--green); }
+
+  .toast {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(120px);
+    background:var(--accent); color:var(--accent-ink); padding:12px 20px;
+    font-weight:600; font-size:13px; z-index:9999; box-shadow:var(--shadow);
+    transition:transform .3s ease; max-width:min(90vw,480px); text-align:center;
+  }
+  .toast.show { transform:translateX(-50%) translateY(0); }
+  .foot { text-align:center; margin-top:14px; }
+  .foot a { color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; text-decoration:none; }
+  .foot a:hover { color:var(--text); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="brand">
+    <div class="logo">BILLBOARD<b>IQ</b></div>
+    <button class="pill" id="themeBtn">◐ LIGHT</button>
+  </div>
+
+  <div class="card">
+
+    <!-- BOOT -->
+    <div class="view show" id="v-boot">
+      <div class="card-body" style="text-align:center; padding:40px 22px;">
+        <div class="mono" style="color:var(--muted); font-size:11px; letter-spacing:2px;">CHECKING SESSION…</div>
+      </div>
+    </div>
+
+    <!-- BOOTSTRAP FIRST SUPERUSER -->
+    <div class="view" id="v-setup">
+      <div class="card-head">
+        <h1>FIRST-RUN SETUP</h1>
+        <p>No users exist yet. Create the founding <b>superuser</b> account. This screen disables itself permanently afterwards.</p>
+      </div>
+      <div class="card-body">
+        <label>Name</label><input id="su-name" autocomplete="name" />
+        <label>Email</label><input id="su-email" type="email" autocomplete="email" />
+        <label>Password (min 10 chars)</label><input id="su-pass" type="password" autocomplete="new-password" />
+        <div class="err" id="su-err"></div>
+        <button class="btn" id="su-btn">Create Superuser</button>
+      </div>
+    </div>
+
+    <!-- SIGN IN / REGISTER -->
+    <div class="view" id="v-auth">
+      <div class="card-head">
+        <h1 id="auth-title">SIGN IN</h1>
+        <p>Access the Colombo Metro billboard inventory.</p>
+        <div class="tabs">
+          <button class="tab active" data-mode="signin">Sign In</button>
+          <button class="tab" data-mode="register">Create Account</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="reg-name-wrap" style="display:none">
+          <label>Name</label><input id="a-name" autocomplete="name" />
+        </div>
+        <label>Email</label><input id="a-email" type="email" autocomplete="email" />
+        <label>Password</label><input id="a-pass" type="password" autocomplete="current-password" />
+        <div class="err" id="a-err"></div>
+        <button class="btn" id="a-btn">Sign In</button>
+        <div class="note" id="reg-note" style="display:none">New accounts start as <b>general users</b> — a superuser can promote you later. You can enable MFA from your account after signing in.</div>
+      </div>
+    </div>
+
+    <!-- MFA CODE (login step 2) -->
+    <div class="view" id="v-mfa">
+      <div class="card-head">
+        <h1>TWO-FACTOR CHECK</h1>
+        <p>Enter the 6-digit code from your authenticator app.</p>
+      </div>
+      <div class="card-body">
+        <input class="code" id="m-code" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="one-time-code" />
+        <div class="err" id="m-err"></div>
+        <button class="btn" id="m-btn">Verify</button>
+        <div class="note"><span class="linkish" id="m-back">← Back to sign in</span></div>
+      </div>
+    </div>
+
+    <!-- MFA ENROLL -->
+    <div class="view" id="v-enroll">
+      <div class="card-head">
+        <h1 id="enroll-title">SET UP MFA</h1>
+        <p id="enroll-sub">Scan with Google Authenticator, Authy, or any TOTP app.</p>
+      </div>
+      <div class="card-body">
+        <div class="qr-tile"><div id="qr"></div></div>
+        <div class="secret-box" id="secret" title="Click to copy"></div>
+        <div class="steps">
+          <b>1.</b> Open your authenticator app<br/>
+          <b>2.</b> Scan the QR (or type the key above)<br/>
+          <b>3.</b> Enter the 6-digit code it shows:
+        </div>
+        <input class="code" id="e-code" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="one-time-code" style="margin-top:12px" />
+        <div class="err" id="e-err"></div>
+        <button class="btn" id="e-btn">Activate MFA</button>
+      </div>
+    </div>
+
+    <!-- SIGNED IN -->
+    <div class="view" id="v-me">
+      <div class="card-head">
+        <h1>ACCOUNT</h1>
+      </div>
+      <div class="card-body">
+        <div class="me-row">
+          <div>
+            <div class="me-name" id="me-name"></div>
+            <div class="me-email" id="me-email"></div>
+          </div>
+          <span class="role" id="me-role"></span>
+        </div>
+        <span class="mfa-badge" id="me-mfa"></span>
+        <button class="btn" id="me-console" style="display:none" onclick="location.href='admin.html'">Open Admin Console</button>
+        <button class="btn ghost" onclick="location.href='index.html'">Back to Map</button>
+        <button class="btn ghost" id="me-enable-mfa" style="display:none">Enable MFA</button>
+        <button class="btn ghost" id="me-logout">Sign Out</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="foot"><a href="index.html">← BILLBOARDIQ / INVENTORY MAP</a></div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let theme = (function(){ try { return localStorage.getItem('bbiq-theme') || 'light'; } catch(e) { return 'light'; }})();
+document.documentElement.setAttribute('data-theme', theme);
+document.getElementById('themeBtn').textContent = theme === 'dark' ? '◑ DARK' : '◐ LIGHT';
+let mode = 'signin';
+let pendingToken = null;
+let currentUser = null;
+
+/* theme */
+$('themeBtn').addEventListener('click', () => {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem('bbiq-theme', theme); } catch(e) {}
+  document.documentElement.classList.add('theming');
+  document.documentElement.setAttribute('data-theme', theme);
+  $('themeBtn').textContent = theme === 'dark' ? '◑ DARK' : '◐ LIGHT';
+  setTimeout(() => document.documentElement.classList.remove('theming'), 320);
+});
+
+/* helpers */
+let toastTimer = null;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+function show(viewId) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('show'));
+  $(viewId).classList.add('show');
+  document.querySelectorAll('.err').forEach(e => e.classList.remove('show'));
+}
+function err(id, msg) { const e = $(id); e.textContent = msg; e.classList.add('show'); }
+function busy(btnId, on, label) {
+  const b = $(btnId); b.disabled = on; b.textContent = on ? 'WORKING…' : label;
+}
+async function api(path, body) {
+  const res = await fetch('/api/' + path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+  return data;
+}
+
+/* boot */
+(async function boot() {
+  try {
+    const meRes = await fetch('/api/me');
+    if (meRes.ok) {
+      const d = await meRes.json();
+      currentUser = d.user;
+      if (currentUser.restricted) { startEnroll(true); return; }
+      renderMe(); return;
+    }
+    const s = await api('auth/status');
+    show(s.needsBootstrap ? 'v-setup' : 'v-auth');
+  } catch (e) {
+    show('v-auth');
+    err('a-err', 'API unreachable — is the D1 binding set up? (' + e.message + ')');
+  }
+})();
+
+/* bootstrap */
+$('su-btn').addEventListener('click', async () => {
+  busy('su-btn', true, 'Create Superuser');
+  try {
+    const d = await api('auth/bootstrap', {
+      name: $('su-name').value, email: $('su-email').value, password: $('su-pass').value
+    });
+    currentUser = d.user;
+    toast('Superuser created — now lock it down with MFA');
+    startEnroll(true);
+  } catch (e) { err('su-err', e.message); }
+  busy('su-btn', false, 'Create Superuser');
+});
+
+/* tabs */
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  mode = t.dataset.mode;
+  $('auth-title').textContent = mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT';
+  $('a-btn').textContent = mode === 'signin' ? 'Sign In' : 'Create Account';
+  $('reg-name-wrap').style.display = mode === 'register' ? 'block' : 'none';
+  $('reg-note').style.display = mode === 'register' ? 'block' : 'none';
+  $('a-pass').autocomplete = mode === 'signin' ? 'current-password' : 'new-password';
+}));
+
+/* sign in / register */
+$('a-btn').addEventListener('click', submitAuth);
+$('a-pass').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+async function submitAuth() {
+  const label = mode === 'signin' ? 'Sign In' : 'Create Account';
+  busy('a-btn', true, label);
+  try {
+    if (mode === 'signin') {
+      const d = await api('auth/login', { email: $('a-email').value, password: $('a-pass').value });
+      if (d.mfaRequired) { pendingToken = d.pending; show('v-mfa'); $('m-code').focus(); }
+      else { currentUser = d.user; afterAuth(d); }
+    } else {
+      const d = await api('auth/register', { name: $('a-name').value, email: $('a-email').value, password: $('a-pass').value });
+      currentUser = d.user;
+      toast('Account created');
+      afterAuth(d);
+    }
+  } catch (e) { err('a-err', e.message); }
+  busy('a-btn', false, label);
+}
+function afterAuth(d) {
+  if (d.mfaSetupRequired || (currentUser && currentUser.restricted)) startEnroll(true);
+  else renderMe();
+}
+
+/* MFA step-2 */
+$('m-btn').addEventListener('click', submitMfa);
+$('m-code').addEventListener('keydown', e => { if (e.key === 'Enter') submitMfa(); });
+$('m-back').addEventListener('click', () => show('v-auth'));
+async function submitMfa() {
+  busy('m-btn', true, 'Verify');
+  try {
+    const d = await api('auth/mfa/verify', { pending: pendingToken, code: $('m-code').value.trim() });
+    currentUser = d.user; pendingToken = null;
+    renderMe();
+  } catch (e) { err('m-err', e.message); }
+  busy('m-btn', false, 'Verify');
+}
+
+/* MFA enrollment */
+async function startEnroll(mandatory) {
+  show('v-enroll');
+  $('enroll-title').textContent = mandatory ? 'MFA REQUIRED' : 'SET UP MFA';
+  $('enroll-sub').textContent = mandatory
+    ? 'Your role requires two-factor auth. Scan with Google Authenticator, Authy, or any TOTP app.'
+    : 'Scan with Google Authenticator, Authy, or any TOTP app.';
+  $('qr').innerHTML = ''; $('secret').textContent = 'GENERATING…';
+  try {
+    const d = await api('auth/mfa/enroll', {});
+    $('secret').textContent = d.secret;
+    new QRCode($('qr'), { text: d.otpauth, width: 176, height: 176, colorDark: '#000000', colorLight: '#ffffff' });
+  } catch (e) { err('e-err', e.message); }
+}
+$('secret').addEventListener('click', () => {
+  navigator.clipboard && navigator.clipboard.writeText($('secret').textContent).then(() => toast('Secret copied'));
+});
+$('e-btn').addEventListener('click', submitEnroll);
+$('e-code').addEventListener('keydown', e => { if (e.key === 'Enter') submitEnroll(); });
+async function submitEnroll() {
+  busy('e-btn', true, 'Activate MFA');
+  try {
+    const d = await api('auth/mfa/confirm', { code: $('e-code').value.trim() });
+    currentUser = d.user;
+    toast('MFA activated');
+    renderMe();
+  } catch (e) { err('e-err', e.message); }
+  busy('e-btn', false, 'Activate MFA');
+}
+
+/* signed-in card */
+function renderMe() {
+  show('v-me');
+  $('me-name').textContent = currentUser.name;
+  $('me-email').textContent = currentUser.email;
+  const r = $('me-role'); r.textContent = currentUser.role; r.className = 'role ' + currentUser.role;
+  const mb = $('me-mfa');
+  mb.textContent = currentUser.mfaEnabled ? '● MFA ACTIVE' : '○ MFA OFF';
+  mb.className = 'mfa-badge' + (currentUser.mfaEnabled ? ' on' : '');
+  $('me-console').style.display = (currentUser.role === 'admin' || currentUser.role === 'superuser') ? 'block' : 'none';
+  $('me-enable-mfa').style.display = currentUser.mfaEnabled ? 'none' : 'block';
+}
+$('me-enable-mfa').addEventListener('click', () => startEnroll(false));
+$('me-logout').addEventListener('click', async () => {
+  try { await api('auth/logout', {}); } catch (e) {}
+  currentUser = null; pendingToken = null;
+  toast('Signed out');
+  const s = await api('auth/status').catch(() => ({ needsBootstrap: false }));
+  show(s.needsBootstrap ? 'v-setup' : 'v-auth');
+});
+</script>
+</body>
+</html>
