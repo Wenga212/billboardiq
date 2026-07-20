@@ -1106,44 +1106,7 @@ const CONFIG = {
 /* ============ DATA ============ */
 let billboards = [];  // Populated by loadBillboards() — real API first, demo fallback second
 
-const DEMO_BILLBOARDS = [
-  { id:'BB-001', title:'Galle Road / Bambalapitiya Junction', area:'Bambalapitiya', lat:6.8895, lng:79.8568, type:'digital', size:'40x20 ft', illuminated:true, status:'available', price:185000, traffic:48000, peak:[8,9,17,18,19], category:'highway',
-    audience:{ male:54, female:46, age:'25-44', income:'Mid-High' },
-    description:'Premium digital LED facing oncoming Galle Road traffic. Visible from 250m at 60kmh.' },
-  { id:'BB-002', title:'Duplication Rd / Liberty Plaza', area:'Kollupitiya', lat:6.9147, lng:79.8500, type:'static', size:'30x15 ft', illuminated:true, status:'booked', price:120000, traffic:32000, peak:[8,9,17,18], category:'highway',
-    audience:{ male:51, female:49, age:'25-54', income:'High' },
-    description:'High-density retail corridor. Faces northbound traffic toward Fort.' },
-  { id:'BB-003', title:'Marine Drive / Wellawatte', area:'Wellawatte', lat:6.8746, lng:79.8612, type:'digital', size:'48x16 ft', illuminated:true, status:'available', price:220000, traffic:52000, peak:[7,8,18,19], category:'highway',
-    audience:{ male:53, female:47, age:'18-44', income:'Mid' },
-    description:'Coastal digital screen. Heavy weekend leisure traffic.' },
-  { id:'BB-004', title:'High Level Rd / Nugegoda', area:'Nugegoda', lat:6.8723, lng:79.8895, type:'static', size:'25x12 ft', illuminated:false, status:'available', price:75000, traffic:28000, peak:[8,17,18], category:'arterial',
-    audience:{ male:52, female:48, age:'25-44', income:'Mid' },
-    description:'Mid-range static board near Nugegoda junction. Cost-effective reach.' },
-  { id:'BB-005', title:'Baseline Rd / Borella', area:'Borella', lat:6.9147, lng:79.8801, type:'digital', size:'36x18 ft', illuminated:true, status:'pending', price:165000, traffic:41000, peak:[8,9,17,18], category:'arterial',
-    audience:{ male:55, female:45, age:'25-54', income:'Mid' },
-    description:'Strategic location near hospital and commercial cluster.' },
-  { id:'BB-006', title:'Parliament Rd / Battaramulla', area:'Battaramulla', lat:6.8964, lng:79.9181, type:'static', size:'30x15 ft', illuminated:true, status:'available', price:95000, traffic:24000, peak:[8,17,18], category:'highway',
-    audience:{ male:58, female:42, age:'30-54', income:'High' },
-    description:'Government district. Targets professionals & decision-makers.' },
-  { id:'BB-007', title:'Negombo Rd / Peliyagoda', area:'Peliyagoda', lat:6.9690, lng:79.8856, type:'digital', size:'48x24 ft', illuminated:true, status:'available', price:240000, traffic:62000, peak:[6,7,8,18,19], category:'highway',
-    audience:{ male:60, female:40, age:'25-54', income:'Mid' },
-    description:'Highway entry to Colombo. Largest digital format in network.' },
-  { id:'BB-008', title:'Havelock Rd / Thimbirigasyaya', area:'Havelock Town', lat:6.8829, lng:79.8696, type:'static', size:'20x10 ft', illuminated:false, status:'booked', price:55000, traffic:18000, peak:[8,17], category:'arterial',
-    audience:{ male:50, female:50, age:'25-44', income:'Mid' },
-    description:'Compact static for budget-conscious local campaigns.' },
-  { id:'BB-009', title:'Kandy Rd / Kelaniya', area:'Kelaniya', lat:6.9553, lng:79.9219, type:'digital', size:'40x20 ft', illuminated:true, status:'available', price:195000, traffic:55000, peak:[7,8,17,18,19], category:'highway',
-    audience:{ male:57, female:43, age:'18-54', income:'Mid' },
-    description:'Major eastern artery. High commuter volume, strong evening visibility.' },
-  { id:'BB-010', title:'Reid Avenue / Cinnamon Gardens', area:'Cinnamon Gardens', lat:6.9015, lng:79.8615, type:'static', size:'25x12 ft', illuminated:true, status:'available', price:140000, traffic:22000, peak:[8,17,18], category:'arterial',
-    audience:{ male:48, female:52, age:'25-54', income:'High' },
-    description:'Affluent residential & embassy zone. Premium audience.' },
-  { id:'BB-011', title:'Old Kottawa Rd / Maharagama', area:'Maharagama', lat:6.8485, lng:79.9265, type:'digital', size:'32x16 ft', illuminated:true, status:'available', price:130000, traffic:36000, peak:[7,8,18,19], category:'arterial',
-    audience:{ male:54, female:46, age:'25-44', income:'Mid' },
-    description:'Suburban hub with rising consumer footfall.' },
-  { id:'BB-012', title:'Lotus Rd / Fort', area:'Fort', lat:6.9344, lng:79.8428, type:'digital', size:'45x20 ft', illuminated:true, status:'pending', price:230000, traffic:58000, peak:[8,9,17,18], category:'highway',
-    audience:{ male:56, female:44, age:'25-54', income:'High' },
-    description:'CBD flagship location. Commercial & tourist exposure.' },
-];
+const DEMO_BILLBOARDS = [];
 const cpmOf = b => (b.price / (b.traffic * 30 * 1.4)) * 1000;
 
 // Convert an API-shaped billboard into the shape the rest of index.html expects
