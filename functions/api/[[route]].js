@@ -187,6 +187,8 @@ function bbRow(r) {
   if (!r) return null;
   let peak = [];
   try { peak = JSON.parse(r.peak_hours || '[]'); } catch (e) {}
+  let dataSources = null;
+  try { dataSources = r.data_sources ? JSON.parse(r.data_sources) : null; } catch (e) {}
   return {
     id: r.id,
     ownerId: r.owner_id,
@@ -213,7 +215,8 @@ function bbRow(r) {
     rejectionNote: r.rejection_note || null,
     reviewedAt: r.reviewed_at,
     createdAt: r.created_at,
-    updatedAt: r.updated_at
+    updatedAt: r.updated_at,
+    dataSources: dataSources
   };
 }
 function validateBillboard(b) {
@@ -231,9 +234,49 @@ function validateBillboard(b) {
   if (!Number.isFinite(price) || price < 0) return 'Price must be zero or more.';
   if (price > 100000000) return 'That price looks too high — please double-check.';
   const traffic = Number(b.traffic);
-  if (!Number.isFinite(traffic) || traffic < 0) return 'Traffic estimate must be zero or more.';
+  if (!Number.isFinite(traffic) || traffic < 0) return 'Traffic must be zero or more.';
   if (b.availability && !['available', 'pending', 'booked'].includes(b.availability)) return 'Invalid availability.';
   return null;
+}
+
+function normalizeDataSources(input) {
+  const src = (input && typeof input === 'object') ? input : {};
+  const clean = { google: null, rda: null, manual: null };
+  if (src.google && src.google.enabled) {
+    clean.google = {
+      enabled: true,
+      roadName: String(src.google.roadName || '').slice(0, 200) || null,
+      roadCategory: ['highway','arterial','local'].includes(src.google.roadCategory) ? src.google.roadCategory : null,
+      nearbyBusinesses: (src.google.nearbyBusinesses && typeof src.google.nearbyBusinesses === 'object') ? src.google.nearbyBusinesses : {},
+      totalPOIs: Number(src.google.totalPOIs) || 0
+    };
+  }
+  if (src.rda && src.rda.enabled) {
+    clean.rda = {
+      enabled: true,
+      traffic: (Number.isFinite(Number(src.rda.traffic)) && Number(src.rda.traffic) >= 0) ? Math.round(Number(src.rda.traffic)) : null,
+      peakHours: Array.isArray(src.rda.peakHours) ? src.rda.peakHours.filter(h => h >= 0 && h <= 23).map(Number) : [],
+      source: String(src.rda.source || '').trim().slice(0, 200) || null,
+      year: (Number.isFinite(Number(src.rda.year)) && Number(src.rda.year) > 1990 && Number(src.rda.year) < 2100) ? Math.round(Number(src.rda.year)) : null
+    };
+  }
+  if (src.manual && src.manual.enabled) {
+    clean.manual = {
+      enabled: true,
+      traffic: (Number.isFinite(Number(src.manual.traffic)) && Number(src.manual.traffic) >= 0) ? Math.round(Number(src.manual.traffic)) : null,
+      peakHours: Array.isArray(src.manual.peakHours) ? src.manual.peakHours.filter(h => h >= 0 && h <= 23).map(Number) : [],
+      audience: (src.manual.audience && typeof src.manual.audience === 'object') ? {
+        male: clamp(src.manual.audience.male, 0, 100, null),
+        female: clamp(src.manual.audience.female, 0, 100, null),
+        age: String(src.manual.audience.age || '').slice(0, 20) || null,
+        income: String(src.manual.audience.income || '').slice(0, 20) || null
+      } : null,
+      source: String(src.manual.source || '').trim().slice(0, 200) || null,
+      date: String(src.manual.date || '').slice(0, 20) || null,
+      notes: String(src.manual.notes || '').slice(0, 500) || null
+    };
+  }
+  return clean;
 }
 
 /* ================================================================
@@ -398,12 +441,13 @@ export async function onRequest(context) {
       if (err) return bad(err);
       const id = 'BB-' + shortId();
       const now = Date.now();
+      const cleanSources = normalizeDataSources(body.dataSources);
       await env.DB.prepare(
         `INSERT INTO billboards
          (id, owner_id, title, area, description, lat, lng, size, type, category, illuminated,
           price, traffic, peak_hours, audience_male, audience_female, audience_age, audience_income,
-          availability, approval_state, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          availability, approval_state, data_sources, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         id, me.id, body.title.trim(), body.area.trim(), (body.description || '').trim(),
         Number(body.lat), Number(body.lng), body.size.trim(), body.type, body.category,
@@ -417,6 +461,7 @@ export async function onRequest(context) {
         (body.audience_income || 'Mid').slice(0, 20),
         body.availability || 'available',
         'draft',
+        JSON.stringify(cleanSources),
         now, now
       ).run();
       await audit(env, me.id, 'billboard_create', id + ' — ' + body.title);
@@ -444,11 +489,12 @@ export async function onRequest(context) {
       // If the owner (not an admin) edits an already-approved listing, re-queue for review
       let nextState = bb.approval_state;
       if (!isAdmin && bb.approval_state === 'approved') nextState = 'pending';
+      const cleanSources = normalizeDataSources(body.dataSources);
       await env.DB.prepare(
         `UPDATE billboards SET
            title=?, area=?, description=?, lat=?, lng=?, size=?, type=?, category=?, illuminated=?,
            price=?, traffic=?, peak_hours=?, audience_male=?, audience_female=?, audience_age=?, audience_income=?,
-           availability=?, approval_state=?, updated_at=?
+           availability=?, approval_state=?, data_sources=?, updated_at=?
          WHERE id=?`
       ).bind(
         body.title.trim(), body.area.trim(), (body.description || '').trim(),
@@ -463,6 +509,7 @@ export async function onRequest(context) {
         (body.audience_income || 'Mid').slice(0, 20),
         body.availability || 'available',
         nextState,
+        JSON.stringify(cleanSources),
         Date.now(),
         body.id
       ).run();
