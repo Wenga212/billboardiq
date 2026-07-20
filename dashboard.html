@@ -492,8 +492,9 @@
         <div>
           <label>Type *</label>
           <select id="f-type">
-            <option value="digital">Digital</option>
-            <option value="static">Static</option>
+            <option value="hoarding">Hoarding</option>
+            <option value="banner">Banner</option>
+            <option value="digital_display">Digital Display</option>
           </select>
         </div>
         <div>
@@ -745,6 +746,8 @@ async function api(path, body) {
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+const TYPE_LABELS = { hoarding: 'HOARDING', banner: 'BANNER', digital_display: 'DIGITAL DISPLAY' };
+function typeLabel(t) { return TYPE_LABELS[t] || String(t || '').toUpperCase(); }
 function gate(title, msg) {
   $('gate').classList.remove('hidden');
   $('main').classList.add('hidden');
@@ -1104,6 +1107,10 @@ function hydrateSources(ds) {
       gate('MFA REQUIRED', 'Finish MFA setup on the sign-in page before managing billboards.');
       return;
     }
+    if (me.role === 'user') {
+      gate('PROVIDER ACCOUNT REQUIRED', 'This dashboard is for advertising providers. Sign out and create a Provider account (or ask a superuser to upgrade yours) to list billboards.');
+      return;
+    }
     $('whoami').textContent = me.email.split('@')[0].toUpperCase() + ' · ' + me.role.toUpperCase();
     $('gate').classList.add('hidden');
     $('main').classList.remove('hidden');
@@ -1223,7 +1230,7 @@ function cardHTML(b, i) {
     <div class="bb-card" style="animation-delay:${Math.min(i * 25, 200)}ms">
       <div class="bb-head">
         <div>
-          <div class="bb-id">${esc(b.id)} · ${esc(b.type.toUpperCase())}${b.illuminated ? ' · LIT' : ''}</div>
+          <div class="bb-id">${esc(b.id)} · ${typeLabel(b.type)}${b.illuminated ? ' · LIT' : ''}</div>
           <div class="bb-title">${esc(b.title)}</div>
           <div class="bb-area">${esc(b.area)}</div>
           ${ownerLine}
@@ -1323,7 +1330,7 @@ function openModal(b) {
   $('f-title').value = b ? b.title : '';
   $('f-area').value = b ? b.area : '';
   $('f-size').value = b ? b.size : '';
-  $('f-type').value = b ? b.type : 'digital';
+  $('f-type').value = b ? b.type : 'hoarding';
   $('f-category').value = b ? b.category : 'arterial';
   $('f-availability').value = b ? b.availability : 'available';
   $('f-illuminated').checked = b ? !!b.illuminated : true;

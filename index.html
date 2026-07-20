@@ -234,6 +234,7 @@
     flex-shrink: 0;
   }
   .avatar.guest { background: var(--panel); color: var(--muted); border: 1px dashed var(--line); }
+  .avatar.provider { background: var(--accent); color: var(--accent-ink); }
   .avatar.admin { background: var(--amber); color: var(--bg); }
   .avatar.superuser { background: var(--red); color: var(--bg); }
   .account-label {
@@ -278,6 +279,7 @@
     padding: 3px 6px; border-radius: 2px;
   }
   .badge.role-user { background: var(--green-bg); color: var(--green); }
+  .badge.role-provider { background: rgba(95,122,0,.14); color: var(--accent-text); }
   .badge.role-admin { background: var(--amber-bg); color: var(--amber); }
   .badge.role-superuser { background: var(--red-bg); color: var(--red); }
   .badge.mfa-on { background: var(--green-bg); color: var(--green); }
@@ -1010,6 +1012,11 @@
       transition-duration: .01ms !important;
     }
   }
+
+  .hidden { display: none !important; }
+  .gate { max-width: 440px; margin: 80px auto; text-align: center; padding: 44px 26px; background: var(--panel); border: 1px solid var(--line); }
+  .gate h1 { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 2px; font-weight: 400; }
+  .gate p { color: var(--muted); font-size: 13px; margin: 12px 0 22px; line-height: 1.6; }
 </style>
 </head>
 <body>
@@ -1036,7 +1043,14 @@
   </div>
 </header>
 
-<div class="app">
+<!-- Gate: shown when not signed in -->
+<div class="gate hidden" id="gate">
+  <h1 id="gate-title">SIGN IN REQUIRED</h1>
+  <p id="gate-msg">Sign in to view the billboard inventory map.</p>
+  <button class="btn" onclick="location.href='login.html'">Go to Sign In</button>
+</div>
+
+<div class="app hidden" id="appMain">
   <!-- LEFT: INVENTORY -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-head">
@@ -1057,8 +1071,9 @@
     <div class="filters">
       <button class="chip active" data-filter="all">All</button>
       <button class="chip" data-filter="available">Available</button>
-      <button class="chip" data-filter="digital">Digital</button>
-      <button class="chip" data-filter="static">Static</button>
+      <button class="chip" data-filter="hoarding">Hoarding</button>
+      <button class="chip" data-filter="banner">Banner</button>
+      <button class="chip" data-filter="digital_display">Digital Display</button>
       <button class="chip" data-filter="highway">Highway</button>
     </div>
     <div class="listings" id="listings"></div>
@@ -1370,10 +1385,13 @@ document.getElementById('trafficPill').addEventListener('click', () => {
 });
 
 /* ============ LISTINGS ============ */
+const TYPE_LABELS = { hoarding: 'HOARDING', banner: 'BANNER', digital_display: 'DIGITAL DISPLAY' };
+function typeLabel(t) { return TYPE_LABELS[t] || String(t || '').toUpperCase(); }
+
 function visibleBillboards() {
   let list = billboards.filter(b => {
     if (currentFilter === 'available' && b.status !== 'available') return false;
-    if ((currentFilter === 'digital' || currentFilter === 'static') && b.type !== currentFilter) return false;
+    if (['hoarding', 'banner', 'digital_display'].includes(currentFilter) && b.type !== currentFilter) return false;
     if (currentFilter === 'highway' && b.category !== 'highway') return false;
     if (searchTerm) {
       const hay = (b.title + ' ' + b.area + ' ' + b.id).toLowerCase();
@@ -1401,7 +1419,7 @@ function renderListings() {
          aria-label="${b.title}" style="animation-delay:${Math.min(i * 25, 250)}ms">
       <div class="card-row">
         <div>
-          <div class="card-id">${b.id} · ${b.type.toUpperCase()}</div>
+          <div class="card-id">${b.id} · ${typeLabel(b.type)}</div>
           <div class="card-title">${b.title}</div>
           <div class="card-meta">
             <span>${b.size}</span>
@@ -1619,7 +1637,7 @@ function selectBillboard(id) {
 
     <div class="detail-head">
       <div class="id-row">
-        <span class="card-id">${b.id} · ${b.type.toUpperCase()}${b.illuminated ? ' · ILLUMINATED' : ''}</span>
+        <span class="card-id">${b.id} · ${typeLabel(b.type)}${b.illuminated ? ' · ILLUMINATED' : ''}</span>
         <span class="status ${b.status}">${b.status}</span>
       </div>
       <h1>${b.title}</h1>
@@ -1778,7 +1796,8 @@ function initials(name, email) {
 function roleTitle(role) {
   if (role === 'superuser') return 'Superuser';
   if (role === 'admin') return 'Admin';
-  return 'Advertiser';
+  if (role === 'provider') return 'Provider';
+  return 'General User';
 }
 
 function renderAccount() {
@@ -1796,6 +1815,7 @@ function renderAccount() {
     avatar.textContent = '?';
     nameEl.textContent = 'Guest';
     roleEl.innerHTML = 'Not signed in';
+    document.getElementById('listBtn').classList.add('hidden');
     menu.innerHTML = `
       <div class="menu-head">
         <div class="who">Not signed in</div>
@@ -1817,9 +1837,11 @@ function renderAccount() {
   // Permission summary — plain-English "what can I do"
   const isAdmin = u.role === 'admin' || u.role === 'superuser';
   const isSuper = u.role === 'superuser';
+  const isProvider = u.role === 'provider' || isAdmin;
+  document.getElementById('listBtn').classList.toggle('hidden', !isProvider);
   const perms = [
     { label: 'Browse & request quotes', ok: true },
-    { label: 'List your billboards', ok: !u.restricted },
+    { label: 'List your billboards', ok: isProvider && !u.restricted },
     { label: 'Review submissions', ok: isAdmin && !u.restricted },
     { label: 'Manage users & roles', ok: isSuper && !u.restricted }
   ];
@@ -1832,8 +1854,10 @@ function renderAccount() {
     ? `<a class="menu-item danger" href="login.html"><span class="ico">!</span> Finish MFA Setup</a><div class="menu-sep"></div>`
     : '';
 
-  // Menu items — always show dashboard; admin/console only for admins+
-  const dashItem = `<a class="menu-item" href="dashboard.html"><span class="ico">◢</span> My Billboards</a>`;
+  // Menu items — dashboard only for providers/admins; console only for admins+
+  const dashItem = isProvider
+    ? `<a class="menu-item" href="dashboard.html"><span class="ico">◢</span> My Billboards</a>`
+    : '';
   const consoleItem = isAdmin
     ? `<a class="menu-item" href="admin.html"><span class="ico">⚙</span> Admin Console</a>`
     : '';
@@ -1938,6 +1962,17 @@ document.addEventListener('keydown', e => {
 
 (async function init() {
   await refreshAccount();
+  if (!currentUser) {
+    document.getElementById('gate').classList.remove('hidden');
+    return;
+  }
+  if (currentUser.restricted) {
+    document.getElementById('gate-title').textContent = 'MFA REQUIRED';
+    document.getElementById('gate-msg').textContent = 'Finish MFA setup on the sign-in page before viewing the map.';
+    document.getElementById('gate').classList.remove('hidden');
+    return;
+  }
+  document.getElementById('appMain').classList.remove('hidden');
   billboards = await loadBillboards();
   document.getElementById('countPill').textContent = billboards.length + ' LISTINGS';
   document.getElementById('fabCount').textContent = billboards.length;

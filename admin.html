@@ -75,6 +75,7 @@
     letter-spacing:1.5px; text-transform:uppercase; border-radius:2px;
   }
   .role.user { background:var(--green-bg); color:var(--green); }
+  .role.provider { background:rgba(95,122,0,.14); color:var(--accent-text); }
   .role.admin { background:var(--amber-bg); color:var(--amber); }
   .role.superuser { background:var(--red-bg); color:var(--red); }
   select.role-set {
@@ -226,7 +227,7 @@ async function loadUsers() {
   $('rows').innerHTML = d.users.map(u => {
     const roleCell = superMode
       ? '<select class="role-set" data-id="' + u.id + '">' +
-          ['user', 'admin', 'superuser'].map(r =>
+          ['user', 'provider', 'admin', 'superuser'].map(r =>
             '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>').join('') +
         '</select>'
       : '<span class="role ' + u.role + '">' + u.role + '</span>';

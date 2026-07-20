@@ -131,8 +131,17 @@
     letter-spacing:1.5px; text-transform:uppercase; border-radius:2px;
   }
   .role.user { background:var(--green-bg); color:var(--green); }
+  .role.provider { background:rgba(95,122,0,.14); color:var(--accent-text); }
   .role.admin { background:var(--amber-bg); color:var(--amber); }
   .role.superuser { background:var(--red-bg); color:var(--red); }
+  .account-type { display:flex; gap:8px; margin-top:14px; }
+  .type-opt {
+    flex:1; padding:12px 10px; border:1px solid var(--line); background:var(--panel-2);
+    cursor:pointer; text-align:left;
+  }
+  .type-opt.active { border-color:var(--accent); background:var(--green-bg); }
+  .type-opt b { display:block; font-size:12px; }
+  .type-opt span { display:block; font-size:10.5px; color:var(--muted); margin-top:2px; line-height:1.4; }
   .mfa-badge {
     display:inline-block; margin-top:12px; font-family:'JetBrains Mono',monospace;
     font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:5px 9px;
@@ -195,14 +204,30 @@
         </div>
       </div>
       <div class="card-body">
+        <div id="reg-type-wrap" style="display:none">
+          <label>Account Type</label>
+          <div class="account-type">
+            <div class="type-opt active" data-account-type="user">
+              <b>General User</b>
+              <span>Browse billboards on the map</span>
+            </div>
+            <div class="type-opt" data-account-type="provider">
+              <b>Advertising Provider</b>
+              <span>List &amp; manage your own billboards</span>
+            </div>
+          </div>
+        </div>
         <div id="reg-name-wrap" style="display:none">
           <label>Name</label><input id="a-name" autocomplete="name" />
+        </div>
+        <div id="reg-company-wrap" style="display:none">
+          <label>Company Name</label><input id="a-company" autocomplete="organization" />
         </div>
         <label>Email</label><input id="a-email" type="email" autocomplete="email" />
         <label>Password</label><input id="a-pass" type="password" autocomplete="current-password" />
         <div class="err" id="a-err"></div>
         <button class="btn" id="a-btn">Sign In</button>
-        <div class="note" id="reg-note" style="display:none">New accounts start as <b>general users</b> — a superuser can promote you later. You can enable MFA from your account after signing in.</div>
+        <div class="note" id="reg-note" style="display:none">A superuser can promote your role later. You can enable MFA from your account after signing in.</div>
       </div>
     </div>
 
@@ -274,8 +299,17 @@ let theme = (function(){ try { return localStorage.getItem('bbiq-theme') || 'lig
 document.documentElement.setAttribute('data-theme', theme);
 document.getElementById('themeBtn').textContent = theme === 'dark' ? '◑ DARK' : '◐ LIGHT';
 let mode = 'signin';
+let accountType = 'user';
 let pendingToken = null;
 let currentUser = null;
+
+/* account type picker (register only) */
+document.querySelectorAll('.type-opt').forEach(opt => opt.addEventListener('click', () => {
+  document.querySelectorAll('.type-opt').forEach(o => o.classList.remove('active'));
+  opt.classList.add('active');
+  accountType = opt.dataset.accountType;
+  $('reg-company-wrap').style.display = accountType === 'provider' ? 'block' : 'none';
+}));
 
 /* theme */
 $('themeBtn').addEventListener('click', () => {
@@ -353,9 +387,15 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   mode = t.dataset.mode;
   $('auth-title').textContent = mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT';
   $('a-btn').textContent = mode === 'signin' ? 'Sign In' : 'Create Account';
+  $('reg-type-wrap').style.display = mode === 'register' ? 'block' : 'none';
   $('reg-name-wrap').style.display = mode === 'register' ? 'block' : 'none';
   $('reg-note').style.display = mode === 'register' ? 'block' : 'none';
   $('a-pass').autocomplete = mode === 'signin' ? 'current-password' : 'new-password';
+  if (mode === 'signin') {
+    accountType = 'user';
+    document.querySelectorAll('.type-opt').forEach(o => o.classList.toggle('active', o.dataset.accountType === 'user'));
+    $('reg-company-wrap').style.display = 'none';
+  }
 }));
 
 /* sign in / register */
@@ -370,7 +410,10 @@ async function submitAuth() {
       if (d.mfaRequired) { pendingToken = d.pending; show('v-mfa'); $('m-code').focus(); }
       else { currentUser = d.user; afterAuth(d); }
     } else {
-      const d = await api('auth/register', { name: $('a-name').value, email: $('a-email').value, password: $('a-pass').value });
+      const d = await api('auth/register', {
+        name: $('a-name').value, email: $('a-email').value, password: $('a-pass').value,
+        accountType, companyName: $('a-company').value
+      });
       currentUser = d.user;
       toast('Account created');
       afterAuth(d);
@@ -430,7 +473,7 @@ async function submitEnroll() {
 /* signed-in card */
 function renderMe() {
   show('v-me');
-  $('me-name').textContent = currentUser.name;
+  $('me-name').textContent = currentUser.companyName ? currentUser.name + ' · ' + currentUser.companyName : currentUser.name;
   $('me-email').textContent = currentUser.email;
   const r = $('me-role'); r.textContent = currentUser.role; r.className = 'role ' + currentUser.role;
   const mb = $('me-mfa');

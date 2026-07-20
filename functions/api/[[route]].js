@@ -24,7 +24,8 @@ const LOCKOUT_AFTER = 5;          // failed attempts
 const LOCKOUT_MINUTES = 15;
 const MIN_PASSWORD_LEN = 10;
 const MFA_REQUIRED_ROLES = ['admin', 'superuser'];
-const ROLE_RANK = { user: 1, admin: 2, superuser: 3 };
+const ROLE_RANK = { user: 1, provider: 1, admin: 2, superuser: 3 };
+const PUBLISH_ROLES = ['provider', 'admin', 'superuser'];
 
 const enc = new TextEncoder();
 
@@ -157,6 +158,7 @@ async function getAuth(env, req) {
 function safeUser(u, restricted) {
   return {
     id: u.id, email: u.email, name: u.name, role: u.role,
+    companyName: u.company_name || null,
     mfaEnabled: !!u.mfa_enabled,
     restricted: !!restricted,
     lastLogin: u.last_login, createdAt: u.created_at
@@ -228,7 +230,7 @@ function validateBillboard(b) {
   if (!Number.isFinite(lat) || lat < -90 || lat > 90) return 'Pick a location on the map (invalid latitude).';
   if (!Number.isFinite(lng) || lng < -180 || lng > 180) return 'Pick a location on the map (invalid longitude).';
   if (!b.size || String(b.size).trim().length < 2) return 'Please enter a size (e.g. "40x20 ft").';
-  if (!['digital', 'static'].includes(b.type)) return 'Type must be digital or static.';
+  if (!['hoarding', 'banner', 'digital_display'].includes(b.type)) return 'Type must be hoarding, banner, or digital display.';
   if (!['highway', 'arterial', 'local'].includes(b.category)) return 'Category must be highway, arterial, or local.';
   const price = Number(b.price);
   if (!Number.isFinite(price) || price < 0) return 'Price must be zero or more.';
@@ -309,7 +311,8 @@ export async function onRequest(context) {
     }
 
     if (path === 'auth/register' && method === 'POST') {
-      return await register(env, request, body, 'user', 'register');
+      const role = body.accountType === 'provider' ? 'provider' : 'user';
+      return await register(env, request, body, role, 'register');
     }
 
     if (path === 'auth/login' && method === 'POST') {
@@ -318,16 +321,6 @@ export async function onRequest(context) {
 
     if (path === 'auth/mfa/verify' && method === 'POST') {
       return await mfaVerify(env, request, body);
-    }
-
-    // PUBLIC: approved billboards for the map (no auth required)
-    if (path === 'billboards/public' && method === 'GET') {
-      const rows = await env.DB.prepare(
-        `SELECT b.*, u.name AS owner_name, u.verified AS owner_verified_flag
-         FROM billboards b JOIN users u ON u.id=b.owner_id
-         WHERE b.approval_state='approved' ORDER BY b.updated_at DESC LIMIT 1000`
-      ).all();
-      return json({ billboards: (rows.results || []).map(bbRow) });
     }
 
     /* ---------- authenticated ---------- */
@@ -347,6 +340,16 @@ export async function onRequest(context) {
     }
 
     if (!me) return bad('Not signed in', 401);
+
+    // Approved billboards for the map — signed-in users only (any role)
+    if (path === 'billboards/public' && method === 'GET') {
+      const rows = await env.DB.prepare(
+        `SELECT b.*, u.name AS owner_name, u.verified AS owner_verified_flag
+         FROM billboards b JOIN users u ON u.id=b.owner_id
+         WHERE b.approval_state='approved' ORDER BY b.updated_at DESC LIMIT 1000`
+      ).all();
+      return json({ billboards: (rows.results || []).map(bbRow) });
+    }
 
     if (path === 'auth/mfa/enroll' && method === 'POST') {
       const secret = b32encode(crypto.getRandomValues(new Uint8Array(20)));
@@ -429,6 +432,7 @@ export async function onRequest(context) {
 
     // Owner: list MY billboards
     if (path === 'billboards/mine' && method === 'GET') {
+      if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to manage listings.', 403);
       const rows = await env.DB.prepare(
         'SELECT * FROM billboards WHERE owner_id=? ORDER BY updated_at DESC'
       ).bind(me.id).all();
@@ -437,6 +441,7 @@ export async function onRequest(context) {
 
     // Owner: create a billboard (starts as draft)
     if (path === 'billboards/create' && method === 'POST') {
+      if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to publish listings.', 403);
       const err = validateBillboard(body);
       if (err) return bad(err);
       const id = 'BB-' + shortId();
@@ -615,8 +620,10 @@ async function register(env, request, body, role, auditAction) {
   const email = String(body.email || '').trim().toLowerCase();
   const name = String(body.name || '').trim().slice(0, 100);
   const password = String(body.password || '');
+  const companyName = role === 'provider' ? String(body.companyName || '').trim().slice(0, 150) : null;
   if (!validEmail(email)) return bad('Please enter a valid email address.');
   if (!name) return bad('Please enter your name.');
+  if (role === 'provider' && !companyName) return bad('Please enter your company name.');
   if (password.length < MIN_PASSWORD_LEN) return bad('Password must be at least ' + MIN_PASSWORD_LEN + ' characters.');
 
   const existing = await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first();
@@ -625,8 +632,8 @@ async function register(env, request, body, role, auditAction) {
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO users (id,email,name,role,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?,?)'
-  ).bind(id, email, name, role, hash, salt, Date.now()).run();
+    'INSERT INTO users (id,email,name,role,company_name,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?,?,?)'
+  ).bind(id, email, name, role, companyName, hash, salt, Date.now()).run();
   await audit(env, id, auditAction, email + ' (' + role + ')');
 
   // Sign them straight in. MFA-mandatory roles get a restricted session.
