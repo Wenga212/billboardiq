@@ -786,13 +786,13 @@
   .drawer-close:hover { color: var(--text); }
 
   .specs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-wrap: wrap;
     gap: 1px;
     background: var(--line);
     border-bottom: 1px solid var(--line);
   }
-  .spec { padding: 14px 20px; background: var(--panel); }
+  .spec { flex: 1 1 130px; padding: 14px 20px; background: var(--panel); }
   .spec .lbl {
     font-family: 'JetBrains Mono', monospace;
     font-size: 9px;
@@ -866,8 +866,8 @@
     letter-spacing: .5px;
   }
 
-  .audience-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .audience-cell { background: var(--panel-2); padding: 12px; border: 1px solid var(--line); }
+  .audience-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .audience-cell { flex: 1 1 140px; background: var(--panel-2); padding: 12px; border: 1px solid var(--line); }
   .audience-cell .lbl {
     font-family: 'JetBrains Mono', monospace;
     font-size: 9px;
