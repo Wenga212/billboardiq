@@ -215,47 +215,41 @@
   .account-wrap { position: relative; }
   .account-btn {
     display: flex; align-items: center; gap: 8px;
-    padding: 5px 10px 5px 5px;
-    border: 1px solid var(--line);
-    background: var(--panel-2);
+    padding: 4px 8px 4px 4px;
+    border: 1px solid transparent;
+    background: transparent;
     color: var(--text);
     cursor: pointer;
-    transition: border-color .15s;
+    transition: background .15s, border-color .15s;
     white-space: nowrap;
   }
-  .account-btn:hover { border-color: var(--muted); }
-  .account-btn.open { border-color: var(--accent); }
+  .account-btn:hover { background: var(--panel-2); border-color: var(--line); }
+  .account-btn.open { background: var(--panel-2); border-color: var(--accent); }
+  .account-name {
+    font-size: 12px; font-weight: 500; letter-spacing: .2px;
+    max-width: 130px; overflow: hidden; text-overflow: ellipsis;
+  }
+  .account-caret { font-size: 9px; color: var(--muted); transition: transform .18s; }
+  .account-btn.open .account-caret { transform: rotate(180deg); }
+
   .avatar {
-    width: 26px; height: 26px;
+    width: 28px; height: 28px; border-radius: 50%;
     background: var(--accent); color: var(--accent-ink);
     display: flex; align-items: center; justify-content: center;
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 13px; letter-spacing: 1px;
+    font-size: 13px; letter-spacing: .5px;
     flex-shrink: 0;
   }
   .avatar.guest { background: var(--panel); color: var(--muted); border: 1px dashed var(--line); }
   .avatar.provider { background: var(--accent); color: var(--accent-ink); }
   .avatar.admin { background: var(--amber); color: var(--bg); }
   .avatar.superuser { background: var(--red); color: var(--bg); }
-  .account-label {
-    display: flex; flex-direction: column; align-items: flex-start;
-    gap: 1px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    letter-spacing: .5px;
-  }
-  .account-label .name { color: var(--text); font-weight: 500; text-transform: uppercase; }
-  .account-label .role {
-    font-size: 8px; letter-spacing: 1.5px; color: var(--muted);
-    display: flex; align-items: center; gap: 4px;
-  }
-  .account-label .role .mfa-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
-  .account-label .role .mfa-dot.on { background: var(--green); }
+
   .account-menu {
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    min-width: 240px;
+    min-width: 252px;
     background: var(--panel);
     border: 1px solid var(--line);
     box-shadow: var(--shadow);
@@ -265,14 +259,29 @@
   }
   .account-menu.show { display: block; }
   @keyframes menuDrop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Identity block: avatar + who, one row */
   .menu-head {
-    padding: 12px 14px 10px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px;
     border-bottom: 1px solid var(--line);
-    background: var(--panel-2);
   }
-  .menu-head .who { font-weight: 600; font-size: 13px; }
-  .menu-head .email { font-size: 11px; color: var(--muted); margin-top: 2px; word-break: break-all; }
-  .menu-badges { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+  .menu-head .avatar { width: 36px; height: 36px; font-size: 16px; }
+  .menu-id { min-width: 0; }
+  .menu-head .who {
+    font-weight: 600; font-size: 13px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .menu-head .email {
+    font-size: 11px; color: var(--muted); margin-top: 1px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* Role + MFA condensed onto a single status line */
+  .menu-meta {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+  }
   .badge {
     font-family: 'JetBrains Mono', monospace;
     font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase;
@@ -282,11 +291,18 @@
   .badge.role-provider { background: rgba(95,122,0,.14); color: var(--accent-text); }
   .badge.role-admin { background: var(--amber-bg); color: var(--amber); }
   .badge.role-superuser { background: var(--red-bg); color: var(--red); }
-  .badge.mfa-on { background: var(--green-bg); color: var(--green); }
-  .badge.mfa-off { background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+  .mfa-chip {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .mfa-chip.on { color: var(--green); }
+
+  .menu-items { padding: 4px 0; }
   .menu-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px;
+    padding: 9px 14px;
     color: var(--text);
     text-decoration: none;
     font-size: 13px;
@@ -304,18 +320,7 @@
   .menu-item.danger { color: var(--red); }
   .menu-item.danger:hover { background: var(--red-bg); border-left-color: var(--red); }
   .menu-item.danger .ico { color: var(--red); }
-  .menu-sep {
-    height: 1px; background: var(--line); margin: 4px 0;
-  }
-  .menu-can-list {
-    padding: 8px 14px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 9px; letter-spacing: 1px;
-    color: var(--muted); text-transform: uppercase;
-  }
-  .menu-can-list b { color: var(--text); font-weight: 500; }
-  .menu-can-list .yes { color: var(--green); }
-  .menu-can-list .no { color: var(--muted); text-decoration: line-through; }
+  .menu-sep { height: 1px; background: var(--line); }
 
   /* Restricted (MFA setup required) banner */
   .restricted-strip {
@@ -1032,7 +1037,7 @@
   @media (max-width: 760px) {
     header { gap: 12px; padding: 0 14px; }
     .breadcrumb, #reportsBtn, #listBtn { display: none; }
-    .account-label { display: none; }
+    .account-name, .account-caret { display: none; }
     .account-btn { padding: 4px; }
     .app { grid-template-columns: 1fr; }
     .sidebar {
@@ -1082,10 +1087,8 @@
     <div class="account-wrap">
       <button class="account-btn" id="accountBtn" aria-haspopup="menu" aria-expanded="false">
         <div class="avatar guest" id="avatar">?</div>
-        <div class="account-label">
-          <span class="name" id="accName">Guest</span>
-          <span class="role" id="accRole">Not signed in</span>
-        </div>
+        <span class="account-name" id="accName">Guest</span>
+        <span class="account-caret" aria-hidden="true">▾</span>
       </button>
       <div class="account-menu" id="accountMenu" role="menu"></div>
     </div>
@@ -1873,10 +1876,8 @@ function roleTitle(role) {
 }
 
 function renderAccount() {
-  const btn = document.getElementById('accountBtn');
   const avatar = document.getElementById('avatar');
   const nameEl = document.getElementById('accName');
-  const roleEl = document.getElementById('accRole');
   const menu = document.getElementById('accountMenu');
 
   // Reset avatar classes
@@ -1886,75 +1887,59 @@ function renderAccount() {
     avatar.classList.add('guest');
     avatar.textContent = '?';
     nameEl.textContent = 'Guest';
-    roleEl.innerHTML = 'Not signed in';
     document.getElementById('listBtn').classList.add('hidden');
     menu.innerHTML = `
       <div class="menu-head">
-        <div class="who">Not signed in</div>
-        <div class="email">Sign in to list billboards or manage inventory.</div>
+        <div class="avatar guest">?</div>
+        <div class="menu-id">
+          <div class="who">Not signed in</div>
+          <div class="email">Sign in to browse the inventory</div>
+        </div>
       </div>
-      <a class="menu-item" href="login.html"><span class="ico">→</span> Sign In</a>
-      <a class="menu-item" href="login.html?mode=register"><span class="ico">+</span> Create Account</a>
+      <div class="menu-items">
+        <a class="menu-item" href="login.html"><span class="ico">→</span> Sign In</a>
+        <a class="menu-item" href="login.html?mode=register"><span class="ico">+</span> Create Account</a>
+      </div>
     `;
     return;
   }
 
   const u = currentUser;
-  avatar.classList.add(u.role);
-  avatar.textContent = initials(u.email.split('@')[0], u.email);
-  nameEl.textContent = u.email.split('@')[0].toUpperCase();
-  const mfaDot = `<span class="mfa-dot ${u.mfaEnabled ? 'on' : ''}"></span>`;
-  roleEl.innerHTML = `${roleTitle(u.role)} ${mfaDot} ${u.mfaEnabled ? 'MFA' : 'No MFA'}`;
-
-  // Permission summary — plain-English "what can I do"
   const isAdmin = u.role === 'admin' || u.role === 'superuser';
-  const isSuper = u.role === 'superuser';
   const isProvider = u.role === 'provider' || isAdmin;
+  // Providers are known by their company; everyone else by their own name
+  const display = u.companyName || u.name || u.email.split('@')[0];
+  const mark = initials(u.name || u.email.split('@')[0], u.email);
+
+  avatar.classList.add(u.role);
+  avatar.textContent = mark;
+  nameEl.textContent = display;
   document.getElementById('listBtn').classList.toggle('hidden', !isProvider);
-  const perms = [
-    { label: 'Browse & request quotes', ok: true },
-    { label: 'List your billboards', ok: isProvider && !u.restricted },
-    { label: 'Review submissions', ok: isAdmin && !u.restricted },
-    { label: 'Manage users & roles', ok: isSuper && !u.restricted }
-  ];
-  const permsHtml = perms.map(p =>
-    `<div><span class="${p.ok ? 'yes' : 'no'}">${p.ok ? '✓' : '✕'}</span> <b>${p.label}</b></div>`
-  ).join('');
 
-  // Restricted (MFA-required) warning
-  const restrictedItem = u.restricted
-    ? `<a class="menu-item danger" href="login.html"><span class="ico">!</span> Finish MFA Setup</a><div class="menu-sep"></div>`
-    : '';
-
-  // Menu items — dashboard only for providers/admins; console only for admins+
-  const dashItem = isProvider
-    ? `<a class="menu-item" href="dashboard.html"><span class="ico">◢</span> My Billboards</a>`
-    : '';
-  const consoleItem = isAdmin
-    ? `<a class="menu-item" href="admin.html"><span class="ico">⚙</span> Admin Console</a>`
-    : '';
-  const enableMfaItem = !u.mfaEnabled
-    ? `<a class="menu-item" href="login.html"><span class="ico">◐</span> Enable MFA</a>`
-    : '';
+  const items = [];
+  if (u.restricted) items.push(`<a class="menu-item danger" href="login.html"><span class="ico">!</span> Finish MFA Setup</a>`);
+  if (isProvider) items.push(`<a class="menu-item" href="dashboard.html"><span class="ico">◢</span> My Billboards</a>`);
+  if (isAdmin) items.push(`<a class="menu-item" href="admin.html"><span class="ico">⚙</span> Admin Console</a>`);
+  if (!u.mfaEnabled) items.push(`<a class="menu-item" href="login.html"><span class="ico">◐</span> Enable MFA</a>`);
+  items.push(`<a class="menu-item" href="login.html"><span class="ico">◑</span> Account Settings</a>`);
 
   menu.innerHTML = `
     <div class="menu-head">
-      <div class="who">${escapeHtml(u.name || 'Account')}</div>
-      <div class="email">${escapeHtml(u.email)}</div>
-      <div class="menu-badges">
-        <span class="badge role-${u.role}">${u.role}</span>
-        <span class="badge ${u.mfaEnabled ? 'mfa-on' : 'mfa-off'}">${u.mfaEnabled ? '● MFA ACTIVE' : '○ MFA OFF'}</span>
+      <div class="avatar ${u.role}">${escapeHtml(mark)}</div>
+      <div class="menu-id">
+        <div class="who">${escapeHtml(display)}</div>
+        <div class="email">${escapeHtml(u.email)}</div>
       </div>
     </div>
-    <div class="menu-can-list">${permsHtml}</div>
+    <div class="menu-meta">
+      <span class="badge role-${u.role}">${roleTitle(u.role)}</span>
+      <span class="mfa-chip ${u.mfaEnabled ? 'on' : ''}">${u.mfaEnabled ? '● MFA on' : '○ MFA off'}</span>
+    </div>
+    <div class="menu-items">${items.join('')}</div>
     <div class="menu-sep"></div>
-    ${restrictedItem}
-    ${dashItem}
-    ${consoleItem}
-    ${enableMfaItem}
-    <div class="menu-sep"></div>
-    <a class="menu-item" href="login.html"><span class="ico">◑</span> Account Settings</a>
-    <div class="menu-item danger" id="signOutItem"><span class="ico">←</span> Sign Out</div>
+    <div class="menu-items">
+      <div class="menu-item danger" id="signOutItem"><span class="ico">←</span> Sign Out</div>
+    </div>
   `;
 
   const signOut = document.getElementById('signOutItem');
