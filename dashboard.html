@@ -399,6 +399,12 @@
     display:block; color:var(--muted); font-size:10px; margin-top:2px; font-style:italic;
   }
 
+  /* photo upload */
+  .photo-field { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .photo-hint { color:var(--muted); font-size:11px; line-height:1.5; flex:1 1 200px; }
+  .photo-preview { margin-top:10px; border:1px solid var(--line); background:var(--panel-2); }
+  .photo-preview img { display:block; width:100%; max-height:220px; object-fit:cover; }
+
   /* gate */
   .gate { max-width:440px; margin:80px auto; text-align:center; padding:44px 26px; background:var(--panel); border:1px solid var(--line); }
   .gate h1 { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:2px; font-weight:400; }
@@ -534,6 +540,15 @@
 
       <label>Description</label>
       <textarea id="f-desc" maxlength="500" placeholder="What makes this billboard special? Visibility, road context, etc."></textarea>
+
+      <label>Photo</label>
+      <div class="photo-field">
+        <input type="file" id="f-photo" accept="image/jpeg,image/png,image/webp" hidden />
+        <button type="button" class="btn ghost sm" id="photoPickBtn">Upload Photo</button>
+        <button type="button" class="btn ghost sm hidden" id="photoRemoveBtn">Remove</button>
+        <span class="photo-hint" id="photoHint">Drone shot or a photo of the billboard — shown at the top of the listing.</span>
+      </div>
+      <div class="photo-preview hidden" id="photoPreview"><img id="photoPreviewImg" alt="Billboard photo preview" /></div>
 
       <!-- DATA SOURCES — 3 checkable sources, only credible info gets shown -->
       <div class="sources-block">
@@ -1310,6 +1325,74 @@ function openAdd() { openModal(null); }
 function openEdit(b) { openModal(b); }
 window.openAdd = openAdd; // for empty-state button
 
+/* ---------------- photo upload ---------------- */
+// undefined = leave whatever is stored alone, null = clear it, string = new data URL
+let photoData;
+
+// Downscale + re-encode client-side so we never post a multi-MB original at D1.
+function compressImage(file, maxDim = 1600) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      // Step the quality down until it fits comfortably inside the API's cap
+      let out = '';
+      for (const q of [0.72, 0.6, 0.5, 0.4]) {
+        out = canvas.toDataURL('image/jpeg', q);
+        if (out.length <= 1400000) return resolve(out);
+      }
+      reject(new Error('That image is too large even after compression — try a smaller one.'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file could not be read as an image.')); };
+    img.src = url;
+  });
+}
+
+function showPhoto(src) {
+  $('photoPreviewImg').src = src;
+  $('photoPreview').classList.remove('hidden');
+  $('photoRemoveBtn').classList.remove('hidden');
+  $('photoPickBtn').textContent = 'Replace Photo';
+}
+function clearPhotoUI() {
+  $('photoPreviewImg').removeAttribute('src');
+  $('photoPreview').classList.add('hidden');
+  $('photoRemoveBtn').classList.add('hidden');
+  $('photoPickBtn').textContent = 'Upload Photo';
+  $('f-photo').value = '';
+}
+
+$('photoPickBtn').addEventListener('click', () => $('f-photo').click());
+$('f-photo').addEventListener('change', async () => {
+  const file = $('f-photo').files[0];
+  if (!file) return;
+  const hint = $('photoHint');
+  const original = hint.textContent;
+  hint.textContent = 'Processing…';
+  try {
+    photoData = await compressImage(file);
+    showPhoto(photoData);
+    hint.textContent = Math.round(photoData.length / 1024) + ' KB after compression.';
+  } catch (e) {
+    hint.textContent = original;
+    $('f-photo').value = '';
+    const err = $('f-err');
+    err.textContent = e.message;
+    err.classList.add('show');
+  }
+});
+$('photoRemoveBtn').addEventListener('click', () => {
+  photoData = null;   // explicit null tells the API to clear the stored image
+  clearPhotoUI();
+  $('photoHint').textContent = 'Photo will be removed when you save.';
+});
+
 function openModal(b) {
   editing = b;
   $('modalTitle').textContent = b ? 'EDIT BILLBOARD' : 'ADD BILLBOARD';
@@ -1336,6 +1419,12 @@ function openModal(b) {
   $('f-illuminated').checked = b ? !!b.illuminated : true;
   $('f-price').value = b ? b.price : '';
   $('f-desc').value = b ? (b.description || '') : '';
+
+  // Photo: start from whatever is stored, untouched until the user acts
+  photoData = undefined;
+  $('photoHint').textContent = 'Drone shot or a photo of the billboard — shown at the top of the listing.';
+  clearPhotoUI();
+  if (b && b.hasImage) showPhoto('/api/billboards/' + encodeURIComponent(b.id) + '/image?v=' + b.updatedAt);
 
   // Restore sources from existing billboard, or reset for new
   if (b && b.dataSources) {
@@ -1506,7 +1595,7 @@ function collectForm() {
   const lngText = $('f-lng').textContent;
   const sources = readSources();
   const eff = computeEffective(sources);
-  return {
+  const form = {
     title: $('f-title').value,
     area: $('f-area').value,
     size: $('f-size').value,
@@ -1527,6 +1616,9 @@ function collectForm() {
     peak_hours: eff.peakHours || [],
     dataSources: sources
   };
+  // Only send imageData when it actually changed — omitting the key keeps the stored photo
+  if (photoData !== undefined) form.imageData = photoData;
+  return form;
 }
 
 async function saveBillboard(alsoSubmit) {

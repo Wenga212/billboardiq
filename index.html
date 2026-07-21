@@ -571,6 +571,54 @@
     100% { transform: scale(1.7); opacity: 0; }
   }
 
+  /* Marker hover tooltip (shared by both map engines) */
+  .mk-wrap { position: relative; width: 18px; height: 18px; }
+  .mk-tip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    width: max-content;
+    max-width: 210px;
+    transform: translateX(-50%) translateY(4px);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    padding: 8px 10px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .14s, transform .14s;
+  }
+  .mk-wrap:hover .mk-tip { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+  /* Lift the hovered pin above its neighbours so the tooltip is never clipped */
+  .gm-marker:hover { z-index: 600; }
+  .leaflet-marker-icon:has(.mk-wrap:hover) { z-index: 600 !important; }
+  .mk-tip .t-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; letter-spacing: 1.2px; color: var(--muted);
+  }
+  .mk-tip .t-co {
+    font-size: 12px; font-weight: 600; line-height: 1.3; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mk-tip .t-meta {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line);
+  }
+  .mk-tip .t-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--green);
+  }
+  .mk-tip .t-status.pending { color: var(--amber); }
+  .mk-tip .t-status.booked { color: var(--red); }
+  .mk-tip .t-price {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px; letter-spacing: .5px; color: var(--accent-text); line-height: 1;
+  }
+  .mk-tip .t-price small {
+    font-family: 'DM Sans', sans-serif; font-size: 10px; color: var(--muted); letter-spacing: 0;
+  }
+
   /* Leaflet fallback chrome */
   .leaflet-container { background: var(--bg) !important; font-family: 'DM Sans', sans-serif !important; }
   .leaflet-control-attribution {
@@ -643,6 +691,7 @@
 
   .hero-pane { height: 230px; position: relative; overflow: hidden; display: none; }
   .hero-pane.show { display: block; }
+  .hero-photo { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--panel-2); }
 
   /* Drone illustration */
   .drone-shot { background: var(--hero-sky); height: 100%; position: relative; overflow: hidden; }
@@ -1142,7 +1191,10 @@ function apiToLocal(b) {
     audience: b.audience || { male: 50, female: 50, age: '25-44', income: 'Mid' },
     description: b.description || '',
     ownerName: b.ownerName,
+    ownerCompany: b.ownerCompany,
     ownerVerified: !!b.ownerVerified,
+    hasImage: !!b.hasImage,
+    updatedAt: b.updatedAt,
     dataSources: b.dataSources || null
   };
 }
@@ -1202,7 +1254,18 @@ function countUp(el) {
 }
 function markerHTML(b) {
   const cls = b.status === 'available' ? '' : ' ' + b.status;
-  return '<div class="billboard-marker' + cls + '" data-id="' + b.id + '" title="' + b.title + '"></div>';
+  const provider = escapeHtml(b.ownerCompany || b.ownerName || 'Independent owner');
+  return '<div class="mk-wrap">' +
+      '<div class="billboard-marker' + cls + '" data-id="' + escapeHtml(b.id) + '"></div>' +
+      '<div class="mk-tip">' +
+        '<div class="t-id">' + escapeHtml(b.id) + '</div>' +
+        '<div class="t-co">' + provider + '</div>' +
+        '<div class="t-meta">' +
+          '<span class="t-status ' + b.status + '">' + b.status + '</span>' +
+          '<span class="t-price">LKR ' + Math.round(b.price / 1000) + 'K<small>/mo</small></span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 }
 function setActiveMarker(id) {
   document.querySelectorAll('.billboard-marker').forEach(m => m.classList.toggle('active', m.dataset.id === id));
@@ -1601,6 +1664,13 @@ function selectBillboard(id) {
         ${chips ? `<div class="ctx-chips">${chips}</div>` : ''}
       </div>`;
   }
+  // Owner-uploaded photo (drone shot / billboard picture) leads the hero when present
+  const photoPane = b.hasImage ? `
+    <div class="hero-pane show" id="photoPane">
+      <img class="hero-photo" src="/api/billboards/${encodeURIComponent(b.id)}/image?v=${b.updatedAt || ''}"
+           alt="${escapeHtml(b.title)}" />
+    </div>` : '';
+
   // Nothing at all? Show a "no verified data" note in place of the specs
   const nothingVerified = !trafficVal && !audienceVal && !googleCtx;
   const noDataNote = nothingVerified ? `
@@ -1615,7 +1685,8 @@ function selectBillboard(id) {
   <div class="detail-body">
     <button class="drawer-close" onclick="closeDetail()" aria-label="Close details">✕</button>
     <div class="hero">
-      <div class="hero-pane show" id="dronePane">
+      ${photoPane}
+      <div class="hero-pane${b.hasImage ? '' : ' show'}" id="dronePane">
         <div class="drone-shot">
           <div class="gridlines"></div>
           <div class="drone-coords">LAT ${b.lat.toFixed(4)} · LNG ${b.lng.toFixed(4)} · ALT 80M</div>
@@ -1630,7 +1701,8 @@ function selectBillboard(id) {
       </div>
       <div class="hero-pane" id="svPane"></div>
       <div class="htabs">
-        <button class="htab active" data-pane="dronePane">Drone</button>
+        ${b.hasImage ? '<button class="htab active" data-pane="photoPane">Photo</button>' : ''}
+        <button class="htab${b.hasImage ? '' : ' active'}" data-pane="dronePane">Drone</button>
         <button class="htab" data-pane="svPane">Street View</button>
       </div>
     </div>

@@ -175,6 +175,29 @@ async function audit(env, userId, action, detail) {
 function validEmail(e) { return typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e.length <= 200; }
 
 /* ---------------- billboards helpers ---------------- */
+
+// Every billboard column EXCEPT image_data, which is far too big to ship in a
+// list payload. Listings expose `hasImage` and fetch the bytes separately from
+// GET billboards/<id>/image.
+const BB_LIST_COLS = `b.id, b.owner_id, b.title, b.area, b.description, b.lat, b.lng, b.size,
+  b.type, b.category, b.illuminated, b.price, b.traffic, b.peak_hours,
+  b.audience_male, b.audience_female, b.audience_age, b.audience_income,
+  b.availability, b.approval_state, b.rejection_note, b.reviewed_by, b.reviewed_at,
+  b.owner_verified, b.created_at, b.updated_at, b.data_sources,
+  (b.image_data IS NOT NULL) AS has_image`;
+
+const MAX_IMAGE_CHARS = 1600000; // base64 chars ≈ 1.2MB binary, under D1's ~2MB row cap
+const IMAGE_DATA_URL = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/;
+
+// Returns { value } on success (string data URL or null to clear), or { error }.
+function normalizeImage(input) {
+  if (input === null || input === '') return { value: null };
+  if (typeof input !== 'string') return { error: 'Invalid image payload.' };
+  if (input.length > MAX_IMAGE_CHARS) return { error: 'That image is too large — please use a smaller photo.' };
+  if (!IMAGE_DATA_URL.test(input)) return { error: 'Image must be a JPEG, PNG, or WebP.' };
+  return { value: input };
+}
+
 function shortId() {
   // 6-char base36 ID, e.g. "K3M9AZ"
   const bytes = crypto.getRandomValues(new Uint8Array(4));
@@ -195,8 +218,11 @@ function bbRow(r) {
     id: r.id,
     ownerId: r.owner_id,
     ownerName: r.owner_name || undefined,
+    ownerCompany: r.owner_company || undefined,
     ownerEmail: r.owner_email || undefined,
     ownerVerified: !!(r.owner_verified_flag ?? r.owner_verified),
+    // image_data itself is never returned — see BB_LIST_COLS
+    hasImage: !!(r.has_image ?? r.image_data),
     title: r.title,
     area: r.area,
     description: r.description || '',
@@ -344,11 +370,31 @@ export async function onRequest(context) {
     // Approved billboards for the map — signed-in users only (any role)
     if (path === 'billboards/public' && method === 'GET') {
       const rows = await env.DB.prepare(
-        `SELECT b.*, u.name AS owner_name, u.verified AS owner_verified_flag
+        `SELECT ${BB_LIST_COLS}, u.name AS owner_name, u.company_name AS owner_company, u.verified AS owner_verified_flag
          FROM billboards b JOIN users u ON u.id=b.owner_id
          WHERE b.approval_state='approved' ORDER BY b.updated_at DESC LIMIT 1000`
       ).all();
       return json({ billboards: (rows.results || []).map(bbRow) });
+    }
+
+    // Listing photo — raw bytes so the browser can cache it and <img src> it directly.
+    // Approved listings are visible to any signed-in user; drafts only to owner/admin.
+    if (method === 'GET' && /^billboards\/[^/]+\/image$/.test(path)) {
+      const bb = await env.DB.prepare(
+        'SELECT owner_id, approval_state, image_data FROM billboards WHERE id=?'
+      ).bind(path.split('/')[1]).first();
+      if (!bb || !bb.image_data) return bad('No image for this listing', 404);
+      if (bb.approval_state !== 'approved' && bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) {
+        return bad('Not your billboard', 403);
+      }
+      const m = IMAGE_DATA_URL.exec(bb.image_data);
+      if (!m) return bad('Stored image is unreadable', 500);
+      const bin = atob(m[2]);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Response(bytes, {
+        headers: { 'Content-Type': m[1], 'Cache-Control': 'private, max-age=300' }
+      });
     }
 
     if (path === 'auth/mfa/enroll' && method === 'POST') {
@@ -434,7 +480,7 @@ export async function onRequest(context) {
     if (path === 'billboards/mine' && method === 'GET') {
       if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to manage listings.', 403);
       const rows = await env.DB.prepare(
-        'SELECT * FROM billboards WHERE owner_id=? ORDER BY updated_at DESC'
+        `SELECT ${BB_LIST_COLS} FROM billboards b WHERE b.owner_id=? ORDER BY b.updated_at DESC`
       ).bind(me.id).all();
       return json({ billboards: (rows.results || []).map(bbRow) });
     }
@@ -444,6 +490,8 @@ export async function onRequest(context) {
       if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to publish listings.', 403);
       const err = validateBillboard(body);
       if (err) return bad(err);
+      const img = normalizeImage(body.imageData === undefined ? null : body.imageData);
+      if (img.error) return bad(img.error);
       const id = 'BB-' + shortId();
       const now = Date.now();
       const cleanSources = normalizeDataSources(body.dataSources);
@@ -451,8 +499,8 @@ export async function onRequest(context) {
         `INSERT INTO billboards
          (id, owner_id, title, area, description, lat, lng, size, type, category, illuminated,
           price, traffic, peak_hours, audience_male, audience_female, audience_age, audience_income,
-          availability, approval_state, data_sources, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          availability, approval_state, data_sources, image_data, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         id, me.id, body.title.trim(), body.area.trim(), (body.description || '').trim(),
         Number(body.lat), Number(body.lng), body.size.trim(), body.type, body.category,
@@ -467,6 +515,7 @@ export async function onRequest(context) {
         body.availability || 'available',
         'draft',
         JSON.stringify(cleanSources),
+        img.value,
         now, now
       ).run();
       await audit(env, me.id, 'billboard_create', id + ' — ' + body.title);
@@ -485,12 +534,20 @@ export async function onRequest(context) {
 
     // Update a billboard (owner or admin+, editing an approved one flips it back to pending)
     if (path === 'billboards/update' && method === 'POST') {
-      const bb = await env.DB.prepare('SELECT * FROM billboards WHERE id=?').bind(body.id).first();
+      const bb = await env.DB.prepare('SELECT owner_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
       if (!bb) return bad('Billboard not found', 404);
       const isAdmin = ROLE_RANK[me.role] >= ROLE_RANK.admin;
       if (bb.owner_id !== me.id && !isAdmin) return bad('Not your billboard', 403);
       const err = validateBillboard(body);
       if (err) return bad(err);
+      // Only touch image_data when the client actually sent the key: absent = keep
+      // the existing photo, null = clear it, string = replace it.
+      const touchesImage = Object.prototype.hasOwnProperty.call(body, 'imageData');
+      let img = { value: null };
+      if (touchesImage) {
+        img = normalizeImage(body.imageData);
+        if (img.error) return bad(img.error);
+      }
       // If the owner (not an admin) edits an already-approved listing, re-queue for review
       let nextState = bb.approval_state;
       if (!isAdmin && bb.approval_state === 'approved') nextState = 'pending';
@@ -499,9 +556,9 @@ export async function onRequest(context) {
         `UPDATE billboards SET
            title=?, area=?, description=?, lat=?, lng=?, size=?, type=?, category=?, illuminated=?,
            price=?, traffic=?, peak_hours=?, audience_male=?, audience_female=?, audience_age=?, audience_income=?,
-           availability=?, approval_state=?, data_sources=?, updated_at=?
+           availability=?, approval_state=?, data_sources=?,${touchesImage ? ' image_data=?,' : ''} updated_at=?
          WHERE id=?`
-      ).bind(
+      ).bind(...[
         body.title.trim(), body.area.trim(), (body.description || '').trim(),
         Number(body.lat), Number(body.lng), body.size.trim(), body.type, body.category,
         body.illuminated ? 1 : 0,
@@ -515,9 +572,10 @@ export async function onRequest(context) {
         body.availability || 'available',
         nextState,
         JSON.stringify(cleanSources),
+        ...(touchesImage ? [img.value] : []),
         Date.now(),
         body.id
-      ).run();
+      ]).run();
       await audit(env, me.id, 'billboard_update', body.id + (nextState !== bb.approval_state ? ' → ' + nextState : ''));
       const fresh = await env.DB.prepare('SELECT * FROM billboards WHERE id=?').bind(body.id).first();
       return json({ billboard: bbRow(fresh) });
@@ -525,7 +583,7 @@ export async function onRequest(context) {
 
     // Owner submits a draft for review
     if (path === 'billboards/submit' && method === 'POST') {
-      const bb = await env.DB.prepare('SELECT * FROM billboards WHERE id=?').bind(body.id).first();
+      const bb = await env.DB.prepare('SELECT owner_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
       if (!bb) return bad('Billboard not found', 404);
       if (bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
       if (bb.approval_state === 'approved') return bad('Already approved.');
@@ -538,7 +596,7 @@ export async function onRequest(context) {
 
     // Delete
     if (path === 'billboards/delete' && method === 'POST') {
-      const bb = await env.DB.prepare('SELECT * FROM billboards WHERE id=?').bind(body.id).first();
+      const bb = await env.DB.prepare('SELECT owner_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
       if (!bb) return bad('Billboard not found', 404);
       if (bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
       await env.DB.prepare('DELETE FROM billboards WHERE id=?').bind(body.id).run();
@@ -550,7 +608,7 @@ export async function onRequest(context) {
     if (path === 'billboards/pending' && method === 'GET') {
       if (ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Admin access required', 403);
       const rows = await env.DB.prepare(
-        `SELECT b.*, u.email AS owner_email, u.name AS owner_name
+        `SELECT ${BB_LIST_COLS}, u.email AS owner_email, u.name AS owner_name, u.company_name AS owner_company
          FROM billboards b JOIN users u ON u.id=b.owner_id
          WHERE b.approval_state='pending' ORDER BY b.updated_at ASC`
       ).all();
@@ -560,7 +618,7 @@ export async function onRequest(context) {
     if (path === 'billboards/all' && method === 'GET') {
       if (ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Admin access required', 403);
       const state = url.searchParams.get('state');
-      let sql = `SELECT b.*, u.email AS owner_email, u.name AS owner_name
+      let sql = `SELECT ${BB_LIST_COLS}, u.email AS owner_email, u.name AS owner_name, u.company_name AS owner_company
                  FROM billboards b JOIN users u ON u.id=b.owner_id`;
       const args = [];
       if (state && ['draft', 'pending', 'approved', 'rejected'].includes(state)) {
@@ -574,7 +632,7 @@ export async function onRequest(context) {
 
     if (path === 'billboards/approve' && method === 'POST') {
       if (ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Admin access required', 403);
-      const bb = await env.DB.prepare('SELECT * FROM billboards WHERE id=?').bind(body.id).first();
+      const bb = await env.DB.prepare('SELECT owner_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
       if (!bb) return bad('Billboard not found', 404);
       await env.DB.prepare(
         'UPDATE billboards SET approval_state=?, rejection_note=NULL, reviewed_by=?, reviewed_at=?, updated_at=? WHERE id=?'
@@ -587,7 +645,7 @@ export async function onRequest(context) {
       if (ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Admin access required', 403);
       const note = String(body.note || '').trim().slice(0, 500);
       if (!note) return bad('Please include a rejection reason so the owner can fix the listing.');
-      const bb = await env.DB.prepare('SELECT * FROM billboards WHERE id=?').bind(body.id).first();
+      const bb = await env.DB.prepare('SELECT owner_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
       if (!bb) return bad('Billboard not found', 404);
       await env.DB.prepare(
         'UPDATE billboards SET approval_state=?, rejection_note=?, reviewed_by=?, reviewed_at=?, updated_at=? WHERE id=?'
