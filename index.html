@@ -111,41 +111,42 @@
   }
   .logo b { color: var(--accent-text); font-weight: 400; }
 
-  .top-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-  .pill {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 9px;
-    font-weight: 500;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 4px 8px;
+  .top-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+  /* Compact icon controls */
+  .icon-btn {
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0;
     border: 1px solid var(--line);
-    color: var(--muted);
     background: var(--panel-2);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .icon-btn svg { width: 14px; height: 14px; display: block; }
+  .icon-btn:hover { color: var(--text); border-color: var(--muted); }
+  .icon-btn.on {
+    color: var(--green);
+    background: var(--green-bg);
+    border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  }
+  .icon-btn.on svg { animation: pulse 1.8s infinite; }
+  .icon-btn.accent {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  }
+  .icon-btn.accent:hover { color: var(--accent-ink); filter: brightness(1.06); }
+
+  .count-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 28px; padding: 0 9px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--muted);
+    font-size: 11px; font-weight: 600; letter-spacing: .3px;
     white-space: nowrap;
-    line-height: 1.4;
   }
-  .pill.clickable { cursor: pointer; transition: color .15s, border-color .15s; }
-  .pill.clickable:hover { color: var(--text); }
-  .pill.live { color: var(--green); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
-  .pill.live::before {
-    content: '';
-    display: inline-block;
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: var(--green);
-    margin-right: 5px;
-    animation: pulse 1.6s infinite;
-  }
-  .pill.off { color: var(--muted); }
-  .pill.off::before {
-    content: '';
-    display: inline-block;
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: var(--muted);
-    margin-right: 5px;
-  }
+  .count-chip svg { width: 12px; height: 12px; display: block; flex-shrink: 0; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
   .btn {
@@ -1028,7 +1029,6 @@
 
   @media (max-width: 760px) {
     header { gap: 12px; padding: 0 14px; }
-    #reportsBtn, #listBtn { display: none; }
     .account-name, .account-caret { display: none; }
     .account-btn { padding: 4px; }
     .app { grid-template-columns: 1fr; }
@@ -1070,11 +1070,23 @@
 <header>
   <div class="logo">BILLBOARD<b>IQ</b></div>
   <div class="top-actions">
-    <button class="pill clickable off" id="trafficPill" title="Toggle live traffic layer">TRAFFIC · OFF</button>
-    <span class="pill" id="countPill">12 LISTINGS</span>
-    <button class="pill clickable" id="themeBtn" title="Switch light / dark">◐ LIGHT</button>
-    <button class="btn ghost" id="reportsBtn">Reports</button>
-    <button class="btn" id="listBtn" onclick="goListBillboard()">+ List Billboard</button>
+    <button class="icon-btn" id="trafficPill" title="Live traffic layer" aria-label="Toggle live traffic layer" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 12h4l3-8 4 16 3-8h4"/>
+      </svg>
+    </button>
+    <span class="count-chip" id="countPill" title="Billboards on the map">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/>
+      </svg>
+      <span id="countValue">0</span>
+    </span>
+    <button class="icon-btn" id="themeBtn" title="Switch light / dark" aria-label="Switch light or dark theme"></button>
+    <button class="icon-btn accent" id="listBtn" onclick="goListBillboard()" title="List a billboard" aria-label="List a billboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
     <div class="account-wrap">
       <button class="account-btn" id="accountBtn" aria-haspopup="menu" aria-expanded="false">
         <div class="avatar guest" id="avatar">?</div>
@@ -1266,12 +1278,18 @@ function setActiveMarker(id) {
 }
 
 /* ============ THEME ============ */
+const SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+const ICON_SUN = SVG_OPEN +
+  '<circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4' +
+  'M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const ICON_MOON = SVG_OPEN + '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>';
+
 function applyTheme(next) {
   theme = next;
   try { localStorage.setItem('bbiq-theme', theme); } catch(e) {}
   document.documentElement.classList.add('theming');
   document.documentElement.setAttribute('data-theme', theme);
-  document.getElementById('themeBtn').textContent = theme === 'dark' ? '◑ DARK' : '◐ LIGHT';
+  document.getElementById('themeBtn').innerHTML = theme === 'dark' ? ICON_MOON : ICON_SUN;
   setTimeout(() => document.documentElement.classList.remove('theming'), 320);
   if (engine === 'google' && gmap) {
     gmap.setOptions({ styles: theme === 'dark' ? GSTYLE_DARK : GSTYLE_LIGHT });
@@ -1433,8 +1451,9 @@ function setTraffic(on) {
 }
 function updateTrafficPill() {
   const p = document.getElementById('trafficPill');
-  if (trafficOn) { p.classList.add('live'); p.classList.remove('off'); p.textContent = 'LIVE TRAFFIC'; }
-  else { p.classList.remove('live'); p.classList.add('off'); p.textContent = 'TRAFFIC · OFF'; }
+  p.classList.toggle('on', trafficOn);
+  p.setAttribute('aria-pressed', trafficOn ? 'true' : 'false');
+  p.title = trafficOn ? 'Live traffic — on' : 'Live traffic — off';
 }
 document.getElementById('trafficPill').addEventListener('click', () => {
   if (engine !== 'google') { toast('Live traffic needs a Google Maps API key — see CONFIG at the top of this file.'); return; }
@@ -1815,7 +1834,6 @@ function closeDetail() { document.body.classList.remove('detail-open'); }
 /* ============ ACTIONS ============ */
 function requestQuote() { toast("Quote requested — we'll be in touch within 24h"); }
 function downloadPack() { toast('Media pack queued for download'); }
-document.getElementById('reportsBtn').addEventListener('click', () => toast('Reports module coming soon'));
 function goListBillboard() {
   if (currentUser) {
     if (currentUser.restricted) location.href = 'login.html';
@@ -2022,7 +2040,7 @@ document.addEventListener('keydown', e => {
   }
   document.getElementById('appMain').classList.remove('hidden');
   billboards = await loadBillboards();
-  document.getElementById('countPill').textContent = billboards.length + ' LISTINGS';
+  document.getElementById('countValue').textContent = billboards.length;
   document.getElementById('fabCount').textContent = billboards.length;
   renderListings();
   boot();
