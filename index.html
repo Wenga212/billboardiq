@@ -114,14 +114,16 @@
   .top-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
   .pill {
     font-family: 'DM Sans', sans-serif;
-    font-size: 10px;
-    letter-spacing: 1.5px;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 1px;
     text-transform: uppercase;
-    padding: 6px 10px;
+    padding: 4px 8px;
     border: 1px solid var(--line);
     color: var(--muted);
     background: var(--panel-2);
     white-space: nowrap;
+    line-height: 1.4;
   }
   .pill.clickable { cursor: pointer; transition: color .15s, border-color .15s; }
   .pill.clickable:hover { color: var(--text); }
@@ -129,20 +131,20 @@
   .pill.live::before {
     content: '';
     display: inline-block;
-    width: 6px; height: 6px;
+    width: 5px; height: 5px;
     border-radius: 50%;
     background: var(--green);
-    margin-right: 6px;
+    margin-right: 5px;
     animation: pulse 1.6s infinite;
   }
   .pill.off { color: var(--muted); }
   .pill.off::before {
     content: '';
     display: inline-block;
-    width: 6px; height: 6px;
+    width: 5px; height: 5px;
     border-radius: 50%;
     background: var(--muted);
-    margin-right: 6px;
+    margin-right: 5px;
   }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
@@ -1069,7 +1071,7 @@
   <div class="logo">BILLBOARD<b>IQ</b></div>
   <div class="top-actions">
     <button class="pill clickable off" id="trafficPill" title="Toggle live traffic layer">TRAFFIC · OFF</button>
-    <span class="pill mono" id="countPill">12 LISTINGS</span>
+    <span class="pill" id="countPill">12 LISTINGS</span>
     <button class="pill clickable" id="themeBtn" title="Switch light / dark">◐ LIGHT</button>
     <button class="btn ghost" id="reportsBtn">Reports</button>
     <button class="btn" id="listBtn" onclick="goListBillboard()">+ List Billboard</button>
