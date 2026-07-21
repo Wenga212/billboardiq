@@ -111,16 +111,6 @@
   }
   .logo b { color: var(--accent-text); font-weight: 400; }
 
-  .breadcrumb {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .breadcrumb span { color: var(--text); }
-
   .top-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
   .pill {
     font-family: 'DM Sans', sans-serif;
@@ -1036,7 +1026,7 @@
 
   @media (max-width: 760px) {
     header { gap: 12px; padding: 0 14px; }
-    .breadcrumb, #reportsBtn, #listBtn { display: none; }
+    #reportsBtn, #listBtn { display: none; }
     .account-name, .account-caret { display: none; }
     .account-btn { padding: 4px; }
     .app { grid-template-columns: 1fr; }
@@ -1077,7 +1067,6 @@
 
 <header>
   <div class="logo">BILLBOARD<b>IQ</b></div>
-  <div class="breadcrumb">MARKET / <span>COLOMBO METRO</span> / INVENTORY</div>
   <div class="top-actions">
     <button class="pill clickable off" id="trafficPill" title="Toggle live traffic layer">TRAFFIC · OFF</button>
     <span class="pill mono" id="countPill">12 LISTINGS</span>
