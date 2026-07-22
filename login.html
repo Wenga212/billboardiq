@@ -424,7 +424,17 @@ async function submitAuth() {
 }
 function afterAuth(d) {
   if (d.mfaSetupRequired || (currentUser && currentUser.restricted)) startEnroll(true);
-  else renderMe();
+  else redirectHome();
+}
+
+// Providers/admins/superusers land on the dashboard first; everyone else lands
+// on the map. Only called right after a fresh sign-in/register/MFA action —
+// never from boot()'s "already signed in" check, so opening the Account page
+// while signed in still shows the account card instead of bouncing away.
+function redirectHome() {
+  try { sessionStorage.setItem('bbiq-home-routed', '1'); } catch (e) {}
+  const home = ['provider', 'admin', 'superuser'].includes(currentUser.role) ? 'dashboard.html' : 'index.html';
+  location.href = home;
 }
 
 /* MFA step-2 */
@@ -436,13 +446,15 @@ async function submitMfa() {
   try {
     const d = await api('auth/mfa/verify', { pending: pendingToken, code: $('m-code').value.trim() });
     currentUser = d.user; pendingToken = null;
-    renderMe();
+    redirectHome();
   } catch (e) { err('m-err', e.message); }
   busy('m-btn', false, 'Verify');
 }
 
 /* MFA enrollment */
+let enrollMandatory = false;
 async function startEnroll(mandatory) {
+  enrollMandatory = mandatory;
   show('v-enroll');
   $('enroll-title').textContent = mandatory ? 'MFA REQUIRED' : 'SET UP MFA';
   $('enroll-sub').textContent = mandatory
@@ -466,7 +478,7 @@ async function submitEnroll() {
     const d = await api('auth/mfa/confirm', { code: $('e-code').value.trim() });
     currentUser = d.user;
     toast('MFA activated');
-    renderMe();
+    if (enrollMandatory) redirectHome(); else renderMe();
   } catch (e) { err('e-err', e.message); }
   busy('e-btn', false, 'Activate MFA');
 }

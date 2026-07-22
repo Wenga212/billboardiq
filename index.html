@@ -2045,6 +2045,18 @@ document.addEventListener('keydown', e => {
     document.getElementById('gate').classList.remove('hidden');
     return;
   }
+  // Providers/admins/superusers land on the dashboard first — but only once per
+  // browser session (a fresh visit with an existing login), so navigating back
+  // to the map later in the same session doesn't bounce them straight back here.
+  if (['provider', 'admin', 'superuser'].includes(currentUser.role)) {
+    let routed = false;
+    try { routed = sessionStorage.getItem('bbiq-home-routed'); } catch (e) {}
+    if (!routed) {
+      try { sessionStorage.setItem('bbiq-home-routed', '1'); } catch (e) {}
+      location.href = 'dashboard.html';
+      return;
+    }
+  }
   document.getElementById('appMain').classList.remove('hidden');
   billboards = await loadBillboards();
   document.getElementById('countValue').textContent = billboards.length;

@@ -125,6 +125,67 @@
   .availability.pending { background:var(--amber-bg); color:var(--amber); }
   .availability.booked { background:var(--red-bg); color:var(--red); }
 
+  /* ================= OVERVIEW ================= */
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px; }
+  .kpi-tile { background:var(--panel); border:1px solid var(--line); padding:14px 16px; }
+  .kpi-tile.warn { border-color:color-mix(in srgb, var(--amber) 45%, transparent); }
+  .kpi-label {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.2px;
+    text-transform:uppercase; color:var(--muted);
+  }
+  .kpi-label small { text-transform:none; letter-spacing:0; }
+  .kpi-value { font-size:24px; font-weight:600; margin-top:4px; line-height:1.1; }
+  .kpi-tile.warn .kpi-value { color:var(--amber); }
+
+  .ov-section {
+    background:var(--panel); border:1px solid var(--line); padding:16px;
+    margin-bottom:14px;
+  }
+  .ov-section h3 {
+    font-family:'Bebas Neue',sans-serif; font-size:15px; letter-spacing:1.5px;
+    font-weight:400; margin-bottom:12px;
+  }
+
+  .util-bar {
+    display:flex; height:20px; border-radius:4px; overflow:hidden;
+    background:var(--panel); gap:2px;
+  }
+  .util-bar .seg { height:100%; }
+  .util-bar .seg.available { background:var(--green); }
+  .util-bar .seg.pending { background:var(--amber); }
+  .util-bar .seg.booked { background:var(--red); }
+  .util-legend { display:flex; gap:16px; margin-top:10px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+  .util-legend b { color:var(--text); font-weight:600; }
+  .util-legend .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+  .util-legend .dot.available { background:var(--green); }
+  .util-legend .dot.pending { background:var(--amber); }
+  .util-legend .dot.booked { background:var(--red); }
+
+  .bar-list { display:flex; flex-direction:column; gap:10px; }
+  .bar-row { display:flex; align-items:center; gap:10px; }
+  .bar-label { width:150px; flex-shrink:0; font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar-track { flex:1; height:16px; background:var(--panel-2); border-radius:4px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:0 4px 4px 0; }
+  .bar-fill.accent { background:var(--accent); }
+  .bar-fill.blue { background:var(--blue); }
+  .bar-value { width:70px; flex-shrink:0; text-align:right; font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+
+  .expiry-list { display:flex; flex-direction:column; }
+  .expiry-row {
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    padding:10px 0; border-bottom:1px solid var(--line); cursor:pointer;
+  }
+  .expiry-row:last-child { border-bottom:none; }
+  .expiry-row:hover .expiry-title { color:var(--accent-text); }
+  .expiry-title { font-weight:600; font-size:13px; transition:color .12s; }
+  .expiry-area { color:var(--muted); font-size:11px; margin-top:2px; }
+  .expiry-badge {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1px;
+    text-transform:uppercase; padding:4px 8px; border-radius:2px; white-space:nowrap;
+  }
+  .expiry-badge.warning { background:var(--amber-bg); color:var(--amber); }
+  .expiry-badge.critical { background:var(--red-bg); color:var(--red); }
+
   /* listing grid */
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px; }
   .bb-card {
@@ -420,7 +481,7 @@
 
 <header>
   <a class="logo" href="/index.html">BILLBOARD<b>IQ</b></a>
-  <div class="breadcrumb">DASHBOARD / <span id="crumb">MY BILLBOARDS</span></div>
+  <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
     <button class="pill" id="themeBtn">◑ DARK</button>
@@ -440,22 +501,23 @@
 <main class="hidden" id="main">
   <div class="page-head">
     <div>
-      <h1 id="pageTitle">MY BILLBOARDS</h1>
-      <p id="pageSub">Manage your listings, submit for review, track approvals.</p>
+      <h1 id="pageTitle">OVERVIEW</h1>
+      <p id="pageSub">Your inventory, utilization, and revenue at a glance.</p>
     </div>
-    <button class="btn" id="addBtn">+ Add Billboard</button>
+    <button class="btn hidden" id="addBtn">+ Add Billboard</button>
   </div>
 
-  <!-- Admin-only queue tabs -->
-  <div class="tabs hidden" id="adminTabs">
-    <button class="tab active" data-view="mine">My Billboards <span class="count" id="cnt-mine">0</span></button>
-    <button class="tab" data-view="pending">Review Queue <span class="count" id="cnt-pending">0</span></button>
-    <button class="tab" data-view="approved">Approved <span class="count" id="cnt-approved">0</span></button>
-    <button class="tab" data-view="rejected">Rejected <span class="count" id="cnt-rejected">0</span></button>
-    <button class="tab" data-view="all">All Billboards <span class="count" id="cnt-all">0</span></button>
+  <div class="tabs" id="viewTabs">
+    <button class="tab active" data-view="overview">Overview</button>
+    <button class="tab" data-view="mine">My Billboards <span class="count" id="cnt-mine">0</span></button>
+    <button class="tab hidden" data-view="pending" id="tab-pending">Review Queue <span class="count" id="cnt-pending">0</span></button>
+    <button class="tab hidden" data-view="approved" id="tab-approved">Approved <span class="count" id="cnt-approved">0</span></button>
+    <button class="tab hidden" data-view="rejected" id="tab-rejected">Rejected <span class="count" id="cnt-rejected">0</span></button>
+    <button class="tab hidden" data-view="all" id="tab-all">All Billboards <span class="count" id="cnt-all">0</span></button>
   </div>
 
-  <div id="grid" class="grid"></div>
+  <div id="overviewPane"></div>
+  <div id="grid" class="grid hidden"></div>
 </main>
 
 <!-- Add / Edit modal -->
@@ -544,6 +606,17 @@
             <option value="pending">Pending</option>
             <option value="booked">Booked</option>
           </select>
+        </div>
+      </div>
+
+      <div class="form-row hidden" id="bookingDates">
+        <div>
+          <label>Booking Start *</label>
+          <input id="f-booking-start" type="date" />
+        </div>
+        <div>
+          <label>Booking End *</label>
+          <input id="f-booking-end" type="date" />
         </div>
       </div>
 
@@ -671,7 +744,7 @@ let theme = (function(){ try { return localStorage.getItem('bbiq-theme') || 'lig
 document.documentElement.setAttribute('data-theme', theme);
 $('themeBtn').textContent = theme === 'dark' ? '◑ DARK' : '◐ LIGHT';
 let me = null;
-let currentView = 'mine';     // mine | pending | approved | rejected | all
+let currentView = 'overview'; // overview | mine | pending | approved | rejected | all
 let editing = null;           // the billboard being edited (null = creating new)
 let allData = { mine: [], pending: [], approved: [], rejected: [], all: [] };
 let pickerMap = null;
@@ -786,6 +859,12 @@ function openFormatNew() {
 
 $('f-type').addEventListener('change', () => populateSizeOptions());
 $('f-size').addEventListener('change', syncSizeSelection);
+
+// Booking start/end only matter (and are only required) once a listing is marked Booked
+function syncBookingDates() {
+  $('bookingDates').classList.toggle('hidden', $('f-availability').value !== 'booked');
+}
+$('f-availability').addEventListener('change', syncBookingDates);
 
 $('formatNewCancel').addEventListener('click', () => {
   const matches = myFormats.filter(f => f.type === $('f-type').value);
@@ -1153,13 +1232,18 @@ function hydrateSources(ds) {
     $('gate').classList.add('hidden');
     $('main').classList.remove('hidden');
 
-    // Admins get the extra tabs
+    // Admins get the extra queue tabs; everyone gets Overview + My Billboards
     if (me.role === 'admin' || me.role === 'superuser') {
-      $('adminTabs').classList.remove('hidden');
+      ['tab-pending', 'tab-approved', 'tab-rejected', 'tab-all'].forEach(id => $(id).classList.remove('hidden'));
     }
+
+    // Landing on the dashboard counts as "home" for this browser session —
+    // a later click on "Map" shouldn't get bounced straight back here.
+    try { sessionStorage.setItem('bbiq-home-routed', '1'); } catch (e) {}
 
     wireSourceCheckboxes();
     await refresh();
+    switchView('overview');
   } catch (e) {
     gate('SIGN IN REQUIRED', 'You need to be signed in to manage billboard listings.');
   }
@@ -1200,6 +1284,7 @@ async function refresh() {
 }
 
 const VIEW_META = {
+  overview: { title: 'OVERVIEW', sub: 'Your inventory, utilization, and revenue at a glance.', crumb: 'OVERVIEW' },
   mine: { title: 'MY BILLBOARDS', sub: 'Manage your listings, submit for review, track approvals.', crumb: 'MY BILLBOARDS' },
   pending: { title: 'REVIEW QUEUE', sub: 'Billboards awaiting your approval. Review carefully — approved listings go live on the public map.', crumb: 'REVIEW QUEUE' },
   approved: { title: 'APPROVED LISTINGS', sub: 'All live billboards across every owner.', crumb: 'APPROVED' },
@@ -1212,15 +1297,22 @@ function switchView(v) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
   const meta = VIEW_META[v];
   $('pageTitle').textContent = meta.title;
-  $('pageSub').textContent = meta.sub;
+  $('pageSub').textContent = (v === 'overview' && (me.role === 'admin' || me.role === 'superuser'))
+    ? 'Platform-wide inventory, utilization, and revenue across every provider.'
+    : meta.sub;
   $('crumb').textContent = meta.crumb;
-  // Only "mine" shows the Add button; other views are admin-oriented
-  $('addBtn').style.display = (v === 'mine') ? 'block' : 'none';
+  // Only "mine" shows the Add button; other views are read-only or admin-oriented
+  $('addBtn').classList.toggle('hidden', v !== 'mine');
   renderList();
 }
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
 
 function renderList() {
+  const isOverview = currentView === 'overview';
+  $('overviewPane').classList.toggle('hidden', !isOverview);
+  $('grid').classList.toggle('hidden', isOverview);
+  if (isOverview) { renderOverview(); return; }
+
   const list = allData[currentView] || [];
   const grid = $('grid');
   if (!list.length) {
@@ -1247,6 +1339,131 @@ function renderList() {
   // Wire buttons
   grid.querySelectorAll('[data-action]').forEach(btn => {
     btn.addEventListener('click', () => handleAction(btn.dataset.action, btn.dataset.id));
+  });
+}
+
+/* ---------------- overview (inventory / utilization / revenue / expiry) ---------------- */
+
+function fmtMoney(n) {
+  if (n >= 1000000) return 'LKR ' + (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return 'LKR ' + Math.round(n / 1000) + 'K';
+  return 'LKR ' + Math.round(n || 0);
+}
+
+function barRow(label, value, max, hueClass, formatter) {
+  const pct = max ? Math.max(4, Math.round((value / max) * 100)) : 0;
+  return `<div class="bar-row">
+    <span class="bar-label">${esc(label)}</span>
+    <div class="bar-track"><div class="bar-fill ${hueClass}" style="width:${pct}%"></div></div>
+    <span class="bar-value">${formatter ? formatter(value) : value}</span>
+  </div>`;
+}
+
+function expiryRow(b, daysLeft) {
+  const urgent = daysLeft <= 7;
+  const dayText = daysLeft < 0 ? Math.abs(daysLeft) + 'd overdue' : daysLeft === 0 ? 'Today' : daysLeft + 'd left';
+  const ownerLine = (me.role !== 'provider' && (b.ownerCompany || b.ownerName))
+    ? ' · ' + esc(b.ownerCompany || b.ownerName) : '';
+  return `<div class="expiry-row" data-action="edit" data-id="${esc(b.id)}">
+    <div>
+      <div class="expiry-title">${esc(b.title)}</div>
+      <div class="expiry-area">${esc(b.area)}${ownerLine}</div>
+    </div>
+    <span class="expiry-badge ${urgent ? 'critical' : 'warning'}">${urgent ? '⚠' : '●'} ${dayText}</span>
+  </div>`;
+}
+
+function renderOverview() {
+  const isAdmin = me.role === 'admin' || me.role === 'superuser';
+  const list = isAdmin ? allData.all : allData.mine;
+  const pane = $('overviewPane');
+
+  const live = list.filter(b => b.approvalState === 'approved');
+  const counts = { available: 0, pending: 0, booked: 0 };
+  live.forEach(b => { if (counts[b.availability] != null) counts[b.availability]++; });
+  const liveTotal = live.length;
+  const utilizationPct = liveTotal ? Math.round((counts.booked / liveTotal) * 100) : 0;
+  const pct = n => liveTotal ? (n / liveTotal) * 100 : 0;
+
+  const bookedRevenue = live.filter(b => b.availability === 'booked').reduce((s, b) => s + (b.price || 0), 0);
+  const potentialRevenue = live.reduce((s, b) => s + (b.price || 0), 0);
+
+  const now = Date.now();
+  const expiring = live
+    .filter(b => b.availability === 'booked' && b.bookingEnd)
+    .map(b => ({ b, daysLeft: Math.floor((b.bookingEnd - now) / 86400000) }))
+    .filter(x => x.daysLeft <= 30)
+    .sort((a, c) => a.daysLeft - c.daysLeft);
+
+  const typeCounts = {};
+  live.forEach(b => { typeCounts[b.type] = (typeCounts[b.type] || 0) + 1; });
+  const typeEntries = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+  const maxType = Math.max(1, ...typeEntries.map(e => e[1]));
+
+  let providerSection = '';
+  if (isAdmin) {
+    const byProvider = {};
+    live.filter(b => b.availability === 'booked').forEach(b => {
+      const key = b.ownerId;
+      if (!byProvider[key]) byProvider[key] = { label: b.ownerCompany || b.ownerName || 'Unknown', revenue: 0 };
+      byProvider[key].revenue += (b.price || 0);
+    });
+    const providerEntries = Object.values(byProvider).sort((a, b) => b.revenue - a.revenue).slice(0, 8);
+    const maxRevenue = Math.max(1, ...providerEntries.map(e => e.revenue));
+    providerSection = `
+      <div class="ov-section">
+        <h3>Top Providers by Booked Revenue</h3>
+        ${providerEntries.length
+          ? `<div class="bar-list">${providerEntries.map(p => barRow(p.label, p.revenue, maxRevenue, 'blue', fmtMoney)).join('')}</div>`
+          : '<div class="src-empty">No booked revenue yet across any provider.</div>'}
+      </div>`;
+  }
+
+  pane.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-tile"><div class="kpi-label">Total inventory</div><div class="kpi-value">${list.length}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Available</div><div class="kpi-value">${counts.available}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Booked</div><div class="kpi-value">${counts.booked}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Utilization</div><div class="kpi-value">${utilizationPct}%</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Booked revenue <small>/mo</small></div><div class="kpi-value">${fmtMoney(bookedRevenue)}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Potential revenue <small>/mo</small></div><div class="kpi-value">${fmtMoney(potentialRevenue)}</div></div>
+      <div class="kpi-tile ${expiring.length ? 'warn' : ''}"><div class="kpi-label">Expiring in 30 days</div><div class="kpi-value">${expiring.length}</div></div>
+    </div>
+
+    <div class="ov-section">
+      <h3>Utilization</h3>
+      ${liveTotal ? `
+        <div class="util-bar">
+          <span class="seg available" style="flex-basis:${pct(counts.available)}%"></span>
+          <span class="seg pending" style="flex-basis:${pct(counts.pending)}%"></span>
+          <span class="seg booked" style="flex-basis:${pct(counts.booked)}%"></span>
+        </div>
+        <div class="util-legend">
+          <span><i class="dot available"></i>Available <b>${counts.available}</b></span>
+          <span><i class="dot pending"></i>Pending <b>${counts.pending}</b></span>
+          <span><i class="dot booked"></i>Booked <b>${counts.booked}</b></span>
+        </div>` : '<div class="src-empty">No live listings yet.</div>'}
+    </div>
+
+    <div class="ov-section">
+      <h3>Inventory by Type</h3>
+      ${typeEntries.length
+        ? `<div class="bar-list">${typeEntries.map(([type, count]) => barRow(typeLabel(type), count, maxType, 'accent')).join('')}</div>`
+        : '<div class="src-empty">No live listings yet.</div>'}
+    </div>
+
+    ${providerSection}
+
+    <div class="ov-section">
+      <h3>Expiring Soon</h3>
+      ${expiring.length
+        ? `<div class="expiry-list">${expiring.map(x => expiryRow(x.b, x.daysLeft)).join('')}</div>`
+        : '<div class="src-empty">Nothing expiring in the next 30 days.</div>'}
+    </div>
+  `;
+
+  pane.querySelectorAll('[data-action]').forEach(el => {
+    el.addEventListener('click', () => handleAction(el.dataset.action, el.dataset.id));
   });
 }
 
@@ -1450,6 +1667,9 @@ async function openModal(b) {
   await loadFormats();
   populateSizeOptions(b ? b.formatId : null);
   $('f-availability').value = b ? b.availability : 'available';
+  $('f-booking-start').value = (b && b.bookingStart) ? new Date(b.bookingStart).toISOString().slice(0, 10) : '';
+  $('f-booking-end').value = (b && b.bookingEnd) ? new Date(b.bookingEnd).toISOString().slice(0, 10) : '';
+  syncBookingDates();
   $('f-illuminated').checked = b ? !!b.illuminated : true;
   $('f-price').value = b ? b.price : '';
   $('f-desc').value = b ? (b.description || '') : '';
@@ -1686,6 +1906,8 @@ function collectForm() {
     type: $('f-type').value,
     category: $('f-category').value,
     availability: $('f-availability').value,
+    bookingStart: $('f-availability').value === 'booked' && $('f-booking-start').value ? new Date($('f-booking-start').value).getTime() : null,
+    bookingEnd: $('f-availability').value === 'booked' && $('f-booking-end').value ? new Date($('f-booking-end').value).getTime() : null,
     illuminated: $('f-illuminated').checked,
     price: $('f-price').value,
     // Effective values from source precedence (0/defaults if no source provides)

@@ -188,6 +188,7 @@ const BB_LIST_COLS = `b.id, b.owner_id, b.title, b.area, b.description, b.lat, b
   b.availability, b.approval_state, b.rejection_note, b.reviewed_by, b.reviewed_at,
   b.owner_verified, b.created_at, b.updated_at, b.data_sources,
   b.format_id, b.building_name, b.resolution, b.ad_duration,
+  b.booking_start, b.booking_end,
   (b.image_data IS NOT NULL) AS has_image`;
 
 const MAX_IMAGE_CHARS = 1600000; // base64 chars ≈ 1.2MB binary, under D1's ~2MB row cap
@@ -247,6 +248,8 @@ function bbRow(r) {
       age: r.audience_age, income: r.audience_income
     },
     availability: r.availability,
+    bookingStart: r.booking_start || null,
+    bookingEnd: r.booking_end || null,
     approvalState: r.approval_state,
     rejectionNote: r.rejection_note || null,
     reviewedAt: r.reviewed_at,
@@ -295,6 +298,11 @@ function validateBillboard(b) {
   const traffic = Number(b.traffic);
   if (!Number.isFinite(traffic) || traffic < 0) return 'Traffic must be zero or more.';
   if (b.availability && !['available', 'pending', 'booked'].includes(b.availability)) return 'Invalid availability.';
+  if (b.availability === 'booked') {
+    const start = Number(b.bookingStart), end = Number(b.bookingEnd);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return 'Please set a booking start and end date.';
+    if (end <= start) return 'Booking end date must be after the start date.';
+  }
   return null;
 }
 
@@ -557,8 +565,9 @@ export async function onRequest(context) {
         `INSERT INTO billboards
          (id, owner_id, title, area, description, lat, lng, size, type, category, illuminated,
           price, traffic, peak_hours, audience_male, audience_female, audience_age, audience_income,
-          availability, approval_state, data_sources, image_data, format_id, building_name, resolution, ad_duration, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          availability, approval_state, data_sources, image_data, format_id, building_name, resolution, ad_duration,
+          booking_start, booking_end, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         id, me.id, body.title.trim(), body.area.trim(), (body.description || '').trim(),
         Number(body.lat), Number(body.lng), body.size.trim(), body.type, body.category,
@@ -578,6 +587,8 @@ export async function onRequest(context) {
         body.type === 'digital_display' ? (String(body.buildingName || '').trim().slice(0, 200) || null) : null,
         body.type === 'digital_display' ? (String(body.resolution || '').trim().slice(0, 50) || null) : null,
         body.type === 'digital_display' ? (String(body.adDuration || '').trim().slice(0, 100) || null) : null,
+        body.availability === 'booked' ? Math.round(Number(body.bookingStart)) : null,
+        body.availability === 'booked' ? Math.round(Number(body.bookingEnd)) : null,
         now, now
       ).run();
       await audit(env, me.id, 'billboard_create', id + ' — ' + body.title);
@@ -618,7 +629,8 @@ export async function onRequest(context) {
         `UPDATE billboards SET
            title=?, area=?, description=?, lat=?, lng=?, size=?, type=?, category=?, illuminated=?,
            price=?, traffic=?, peak_hours=?, audience_male=?, audience_female=?, audience_age=?, audience_income=?,
-           availability=?, approval_state=?, data_sources=?, format_id=?, building_name=?, resolution=?, ad_duration=?,${touchesImage ? ' image_data=?,' : ''} updated_at=?
+           availability=?, approval_state=?, data_sources=?, format_id=?, building_name=?, resolution=?, ad_duration=?,
+           booking_start=?, booking_end=?,${touchesImage ? ' image_data=?,' : ''} updated_at=?
          WHERE id=?`
       ).bind(...[
         body.title.trim(), body.area.trim(), (body.description || '').trim(),
@@ -638,6 +650,8 @@ export async function onRequest(context) {
         body.type === 'digital_display' ? (String(body.buildingName || '').trim().slice(0, 200) || null) : null,
         body.type === 'digital_display' ? (String(body.resolution || '').trim().slice(0, 50) || null) : null,
         body.type === 'digital_display' ? (String(body.adDuration || '').trim().slice(0, 100) || null) : null,
+        body.availability === 'booked' ? Math.round(Number(body.bookingStart)) : null,
+        body.availability === 'booked' ? Math.round(Number(body.bookingEnd)) : null,
         ...(touchesImage ? [img.value] : []),
         Date.now(),
         body.id
