@@ -598,6 +598,7 @@
     font-size: 12px; font-weight: 600; line-height: 1.3; margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .mk-tip .t-verified { color: var(--green); font-weight: 700; }
   .mk-tip .t-meta {
     display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
     margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line);
@@ -1260,11 +1261,12 @@ function countUp(el) {
 function markerHTML(b) {
   const cls = b.status === 'available' ? '' : ' ' + b.status;
   const provider = escapeHtml(b.ownerCompany || b.ownerName || 'Independent owner');
+  const verifiedTick = b.ownerVerified ? ' <span class="t-verified" title="Verified provider">✓</span>' : '';
   return '<div class="mk-wrap">' +
       '<div class="billboard-marker' + cls + '" data-id="' + escapeHtml(b.id) + '"></div>' +
       '<div class="mk-tip">' +
         '<div class="t-id">' + escapeHtml(b.id) + '</div>' +
-        '<div class="t-co">' + provider + '</div>' +
+        '<div class="t-co">' + provider + verifiedTick + '</div>' +
         '<div class="t-meta">' +
           '<span class="t-status ' + b.status + '">' + b.status + '</span>' +
           '<span class="t-price">LKR ' + Math.round(b.price / 1000) + 'K<small>/mo</small></span>' +
