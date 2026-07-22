@@ -97,6 +97,7 @@
     font-size: 24px;
     letter-spacing: 2.5px;
     color: var(--text);
+    text-decoration: none;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1067,7 +1068,7 @@
 <body>
 
 <header>
-  <div class="logo">BILLBOARD<b>IQ</b></div>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b></a>
   <div class="top-actions">
     <button class="icon-btn" id="trafficPill" title="Live traffic layer" aria-label="Toggle live traffic layer" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1081,11 +1082,7 @@
       <span id="countValue">0</span>
     </span>
     <button class="icon-btn" id="themeBtn" title="Switch light / dark" aria-label="Switch light or dark theme"></button>
-    <button class="icon-btn accent" id="listBtn" onclick="goListBillboard()" title="List a billboard" aria-label="List a billboard">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-    </button>
+    <button class="btn" id="listBtn" onclick="goListBillboard()" title="List a billboard" aria-label="List a billboard">+ Add Billboard</button>
     <div class="account-wrap">
       <button class="account-btn" id="accountBtn" aria-haspopup="menu" aria-expanded="false">
         <div class="avatar guest" id="avatar">?</div>
