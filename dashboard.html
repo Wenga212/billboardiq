@@ -296,40 +296,30 @@
   }
   .analytics-note b { color:var(--text); font-weight:600; }
 
-  /* DATA SOURCES */
-  .sources-block { margin-top:18px; }
-  .sources-head { margin-bottom:12px; }
-  .sources-head h3 {
-    font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:2px; font-weight:400;
+  /* NEARBY & TRAFFIC (auto, from Google Places) */
+  .nearby-block {
+    margin-top:14px; padding:12px 14px; border:1px solid var(--line); background:var(--panel-2);
   }
-  .sources-hint { display:block; color:var(--muted); font-size:11px; margin-top:2px; line-height:1.5; }
-  .src-card {
-    border:1px solid var(--line); background:var(--panel-2);
-    margin-bottom:10px; transition:border-color .15s;
+  .nearby-head {
+    display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px;
   }
-  .src-card:has(input:checked) { border-color:var(--accent); background:var(--panel); }
-  .src-check {
-    display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto;
-    gap:2px 12px; padding:12px 14px; cursor:pointer; align-items:center;
-    margin:0;
+  .nearby-head h3 {
+    font-family:'Bebas Neue',sans-serif; font-size:15px; letter-spacing:1.5px; font-weight:400;
   }
-  .src-check input[type="checkbox"] {
-    grid-row:1 / span 2; align-self:center;
-    width:18px; height:18px; margin:0; accent-color:var(--accent-text); cursor:pointer;
+  .nearby-toggle {
+    display:flex; align-items:center; gap:6px; margin:0;
+    font-size:11px; color:var(--muted); white-space:nowrap; cursor:pointer;
   }
-  .src-title {
-    grid-column:2; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-  }
-  .src-name { font-weight:600; font-size:14px; letter-spacing:0; }
+  .nearby-toggle input[type="checkbox"] { width:14px; height:14px; accent-color:var(--accent-text); cursor:pointer; }
+
+  /* Optional manual data entry + preview */
   .src-tag {
     font-family:'JetBrains Mono',monospace; font-size:8px; letter-spacing:1.2px;
     padding:2px 6px; border-radius:2px; text-transform:uppercase;
   }
-  .src-tag.google { background:var(--green-bg); color:var(--green); }
   .src-tag.manual { background:var(--amber-bg); color:var(--amber); }
-  .src-desc { grid-column:2; color:var(--muted); font-size:11px; line-height:1.5; }
   .src-content {
-    padding:0 14px 14px 44px; border-top:1px solid var(--line); margin-top:8px; padding-top:12px;
+    padding:12px 14px; margin-bottom:16px; border:1px solid var(--line); background:var(--panel-2);
   }
   .src-content.src-hidden { display:none; }
   .src-empty {
@@ -519,6 +509,16 @@
         <span>LNG: <b id="f-lng">—</b></span>
       </div>
 
+      <div class="nearby-block">
+        <div class="nearby-head">
+          <h3>Nearby &amp; Traffic</h3>
+          <label class="nearby-toggle"><input type="checkbox" id="src-google" checked /> Show to advertisers</label>
+        </div>
+        <div id="src-google-content">
+          <div class="src-empty">Pick a location on the map above to fetch nearby points of interest.</div>
+        </div>
+      </div>
+
       <div class="form-row-3">
         <div>
           <label>Type *</label>
@@ -563,96 +563,62 @@
       </div>
       <div class="photo-preview hidden" id="photoPreview"><img id="photoPreviewImg" alt="Billboard photo preview" /></div>
 
-      <!-- DATA SOURCES — 3 checkable sources, only credible info gets shown -->
-      <div class="sources-block">
-        <div class="sources-head">
-          <h3>DATA SOURCES</h3>
-          <span class="sources-hint">Tick the sources you can back up. Only credible, attributed data appears to advertisers.</span>
-        </div>
-
-        <!-- GOOGLE -->
-        <div class="src-card" id="src-card-google">
-          <label class="src-check">
-            <input type="checkbox" id="src-google" checked />
-            <div class="src-title">
-              <span class="src-name">Google Places</span>
-              <span class="src-tag google">AUTO · MEASURED</span>
-            </div>
-            <div class="src-desc">Road name, business context, transit stops within 500m. Fetched live from Google Maps.</div>
-          </label>
-          <div class="src-content" id="src-google-content">
-            <div class="src-empty">Pick a location on the map above to fetch data.</div>
+      <label class="inline"><input type="checkbox" id="src-manual" class="checkbox" /> Add your own traffic &amp; audience numbers <span class="src-tag manual">optional</span></label>
+      <div class="src-content src-hidden" id="src-manual-content">
+        <div class="form-row">
+          <div>
+            <label>Daily Traffic (vehicles/day)</label>
+            <input id="man-traffic" type="number" min="0" step="100" />
+          </div>
+          <div>
+            <label>Survey Date</label>
+            <input id="man-date" type="text" placeholder="Q2 2024" maxlength="20" />
           </div>
         </div>
-
-        <!-- MANUAL -->
-        <div class="src-card" id="src-card-manual">
-          <label class="src-check">
-            <input type="checkbox" id="src-manual" />
-            <div class="src-title">
-              <span class="src-name">Manual / Own Survey</span>
-              <span class="src-tag manual">OWNER-DECLARED</span>
-            </div>
-            <div class="src-desc">Data you've collected yourself. Overrides other sources for any field you fill in.</div>
-          </label>
-          <div class="src-content src-hidden" id="src-manual-content">
-            <div class="form-row">
-              <div>
-                <label>Daily Traffic (vehicles/day)</label>
-                <input id="man-traffic" type="number" min="0" step="100" />
-              </div>
-              <div>
-                <label>Survey Date</label>
-                <input id="man-date" type="text" placeholder="Q2 2024" maxlength="20" />
-              </div>
-            </div>
-            <label>Peak Hours (24-hour, comma-separated)</label>
-            <input id="man-peaks" type="text" placeholder="7, 8, 17, 18" />
-            <div class="form-row-3">
-              <div>
-                <label>Male %</label>
-                <input id="man-male" type="number" min="0" max="100" placeholder="52" />
-              </div>
-              <div>
-                <label>Primary Age</label>
-                <select id="man-age">
-                  <option value="">— unknown —</option>
-                  <option value="18-24">18–24</option>
-                  <option value="18-44">18–44</option>
-                  <option value="25-44">25–44</option>
-                  <option value="25-54">25–54</option>
-                  <option value="30-54">30–54</option>
-                  <option value="35-64">35–64</option>
-                </select>
-              </div>
-              <div>
-                <label>Income Tier</label>
-                <select id="man-income">
-                  <option value="">— unknown —</option>
-                  <option value="Low">Low</option>
-                  <option value="Mid">Mid</option>
-                  <option value="Mid-High">Mid–High</option>
-                  <option value="High">High</option>
-                </select>
-              </div>
-            </div>
-            <label>Source / Methodology <span class="req">*</span></label>
-            <input id="man-source" type="text" maxlength="200" placeholder="Own foot-fall & vehicle count survey conducted Q2 2024" />
-            <label>Notes (optional)</label>
-            <textarea id="man-notes" maxlength="500" placeholder="Any additional context on how the data was collected."></textarea>
-            <p class="src-note">Provide enough detail that an advertiser can weigh how much to trust this claim.</p>
+        <label>Peak Hours (24-hour, comma-separated)</label>
+        <input id="man-peaks" type="text" placeholder="7, 8, 17, 18" />
+        <div class="form-row-3">
+          <div>
+            <label>Male %</label>
+            <input id="man-male" type="number" min="0" max="100" placeholder="52" />
+          </div>
+          <div>
+            <label>Primary Age</label>
+            <select id="man-age">
+              <option value="">— unknown —</option>
+              <option value="18-24">18–24</option>
+              <option value="18-44">18–44</option>
+              <option value="25-44">25–44</option>
+              <option value="25-54">25–54</option>
+              <option value="30-54">30–54</option>
+              <option value="35-64">35–64</option>
+            </select>
+          </div>
+          <div>
+            <label>Income Tier</label>
+            <select id="man-income">
+              <option value="">— unknown —</option>
+              <option value="Low">Low</option>
+              <option value="Mid">Mid</option>
+              <option value="Mid-High">Mid–High</option>
+              <option value="High">High</option>
+            </select>
           </div>
         </div>
+        <label>Source / Methodology <span class="req">*</span></label>
+        <input id="man-source" type="text" maxlength="200" placeholder="Own foot-fall & vehicle count survey conducted Q2 2024" />
+        <label>Notes (optional)</label>
+        <textarea id="man-notes" maxlength="500" placeholder="Any additional context on how the data was collected."></textarea>
+        <p class="src-note">Provide enough detail that an advertiser can weigh how much to trust this claim.</p>
+      </div>
 
-        <!-- PREVIEW -->
-        <div class="preview-block">
-          <div class="preview-head">
-            <h4>ADVERTISERS WILL SEE</h4>
-            <span class="preview-sub">Live preview — updates as you edit</span>
-          </div>
-          <div class="preview-body" id="preview-body">
-            <div class="preview-empty">Enable a source above to show data.</div>
-          </div>
+      <div class="preview-block">
+        <div class="preview-head">
+          <h4>ADVERTISERS WILL SEE</h4>
+          <span class="preview-sub">Live preview — updates as you edit</span>
+        </div>
+        <div class="preview-body" id="preview-body">
+          <div class="preview-empty">Enable a source above to show data.</div>
         </div>
       </div>
 
@@ -995,19 +961,21 @@ function fmtHourList(hours) {
   return groups.map(g => g[0] === g[1] ? String(g[0]).padStart(2, '0') : String(g[0]).padStart(2, '0') + '–' + String(g[1]).padStart(2, '0')).join(', ');
 }
 
-// Toggle content visibility for checkboxes
+// Manual's content is checkbox-gated (hidden until "Add your own numbers" is
+// ticked). Nearby & Traffic (Google) stays visible regardless of its checkbox —
+// that one only controls whether it's included in what advertisers see.
 function wireSourceCheckboxes() {
-  ['google','manual'].forEach(k => {
-    const cb = $('src-'+k);
-    const content = $('src-'+k+'-content');
-    const sync = () => {
-      content.classList.toggle('src-hidden', !cb.checked);
-      updatePreview();
-    };
-    cb.addEventListener('change', sync);
-    // initial state
-    sync();
-  });
+  const manualCb = $('src-manual');
+  const manualContent = $('src-manual-content');
+  const syncManual = () => {
+    manualContent.classList.toggle('src-hidden', !manualCb.checked);
+    updatePreview();
+  };
+  manualCb.addEventListener('change', syncManual);
+  syncManual();
+
+  $('src-google').addEventListener('change', updatePreview);
+
   // Any input in Manual updates the preview
   ['man-traffic','man-date','man-peaks','man-male','man-age','man-income','man-source','man-notes']
     .forEach(id => { const el = $(id); if (el) el.addEventListener('input', updatePreview); });
@@ -1162,10 +1130,8 @@ function hydrateSources(ds) {
   $('man-income').value = (m && m.audience && m.audience.income) || '';
   $('man-source').value = (m && m.source) || '';
   $('man-notes').value = (m && m.notes) || '';
-  // Refresh visibility
-  ['google','manual'].forEach(k => {
-    $('src-'+k+'-content').classList.toggle('src-hidden', !$('src-'+k).checked);
-  });
+  // Refresh visibility (Manual only — Nearby & Traffic content always stays visible)
+  $('src-manual-content').classList.toggle('src-hidden', !$('src-manual').checked);
   updatePreview();
 }
 
@@ -1669,14 +1635,12 @@ const GSTYLE_DARK = [
   { elementType: 'geometry', stylers: [{ color: '#0e100f' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#6b7270' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#0b0d0c' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1c1f1d' }] },
   { featureType: 'water', stylers: [{ color: '#090b0a' }] }
 ];
 const GSTYLE_LIGHT = [
   { elementType: 'geometry', stylers: [{ color: '#e7e8e0' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#67706a' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#f7f8f3' }] },
   { featureType: 'water', stylers: [{ color: '#c6d4cf' }] }
 ];
