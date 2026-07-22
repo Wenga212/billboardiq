@@ -15,6 +15,9 @@
      POST admin/role           → superuser
      POST admin/users/delete   → superuser
      GET  admin/audit          → superuser
+     GET  formats/list         → provider+, own billboard-format catalog
+     POST formats/create       → provider+
+     POST formats/delete       → provider+
    ================================================================ */
 
 const PBKDF2_ITERATIONS = 100000; // lower to 50000 if you ever hit CPU limits on free tier
@@ -184,6 +187,7 @@ const BB_LIST_COLS = `b.id, b.owner_id, b.title, b.area, b.description, b.lat, b
   b.audience_male, b.audience_female, b.audience_age, b.audience_income,
   b.availability, b.approval_state, b.rejection_note, b.reviewed_by, b.reviewed_at,
   b.owner_verified, b.created_at, b.updated_at, b.data_sources,
+  b.format_id, b.building_name, b.resolution, b.ad_duration,
   (b.image_data IS NOT NULL) AS has_image`;
 
 const MAX_IMAGE_CHARS = 1600000; // base64 chars ≈ 1.2MB binary, under D1's ~2MB row cap
@@ -228,6 +232,10 @@ function bbRow(r) {
     description: r.description || '',
     lat: r.lat, lng: r.lng,
     size: r.size,
+    formatId: r.format_id || null,
+    buildingName: r.building_name || null,
+    resolution: r.resolution || null,
+    adDuration: r.ad_duration || null,
     type: r.type,
     category: r.category,
     illuminated: !!r.illuminated,
@@ -246,6 +254,29 @@ function bbRow(r) {
     updatedAt: r.updated_at,
     dataSources: dataSources
   };
+}
+function formatRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    type: r.type,
+    size: r.size || null,
+    buildingName: r.building_name || null,
+    resolution: r.resolution || null,
+    adDuration: r.ad_duration || null,
+    createdAt: r.created_at
+  };
+}
+function validateFormat(f) {
+  if (!f || typeof f !== 'object') return 'Missing data.';
+  if (!['hoarding', 'banner', 'digital_display'].includes(f.type)) return 'Type must be hoarding, banner, or digital display.';
+  if (f.type === 'digital_display') {
+    if (!f.buildingName || String(f.buildingName).trim().length < 2) return 'Please enter the building name.';
+    if (!f.resolution || String(f.resolution).trim().length < 2) return 'Please enter the screen resolution (e.g. "1920x1080").';
+  } else {
+    if (!f.size || String(f.size).trim().length < 2) return 'Please enter a size (e.g. "40x20 ft").';
+  }
+  return null;
 }
 function validateBillboard(b) {
   if (!b || typeof b !== 'object') return 'Missing data.';
@@ -269,7 +300,7 @@ function validateBillboard(b) {
 
 function normalizeDataSources(input) {
   const src = (input && typeof input === 'object') ? input : {};
-  const clean = { google: null, rda: null, manual: null };
+  const clean = { google: null, manual: null };
   if (src.google && src.google.enabled) {
     clean.google = {
       enabled: true,
@@ -277,15 +308,6 @@ function normalizeDataSources(input) {
       roadCategory: ['highway','arterial','local'].includes(src.google.roadCategory) ? src.google.roadCategory : null,
       nearbyBusinesses: (src.google.nearbyBusinesses && typeof src.google.nearbyBusinesses === 'object') ? src.google.nearbyBusinesses : {},
       totalPOIs: Number(src.google.totalPOIs) || 0
-    };
-  }
-  if (src.rda && src.rda.enabled) {
-    clean.rda = {
-      enabled: true,
-      traffic: (Number.isFinite(Number(src.rda.traffic)) && Number(src.rda.traffic) >= 0) ? Math.round(Number(src.rda.traffic)) : null,
-      peakHours: Array.isArray(src.rda.peakHours) ? src.rda.peakHours.filter(h => h >= 0 && h <= 23).map(Number) : [],
-      source: String(src.rda.source || '').trim().slice(0, 200) || null,
-      year: (Number.isFinite(Number(src.rda.year)) && Number(src.rda.year) > 1990 && Number(src.rda.year) < 2100) ? Math.round(Number(src.rda.year)) : null
     };
   }
   if (src.manual && src.manual.enabled) {
@@ -477,6 +499,42 @@ export async function onRequest(context) {
        ================================================================ */
 
     // Owner: list MY billboards
+    // Owner's own catalog of billboard formats — the Add Billboard "Size" dropdown
+    // only ever shows the signed-in provider's own entries here.
+    if (path === 'formats/list' && method === 'GET') {
+      if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to manage formats.', 403);
+      const rows = await env.DB.prepare(
+        'SELECT * FROM billboard_formats WHERE owner_id=? ORDER BY created_at DESC'
+      ).bind(me.id).all();
+      return json({ formats: (rows.results || []).map(formatRow) });
+    }
+
+    if (path === 'formats/create' && method === 'POST') {
+      if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to manage formats.', 403);
+      const err = validateFormat(body);
+      if (err) return bad(err);
+      const id = 'FMT-' + shortId();
+      await env.DB.prepare(
+        `INSERT INTO billboard_formats (id, owner_id, type, size, building_name, resolution, ad_duration, created_at)
+         VALUES (?,?,?,?,?,?,?,?)`
+      ).bind(
+        id, me.id, body.type,
+        body.type === 'digital_display' ? null : String(body.size || '').trim().slice(0, 60),
+        body.type === 'digital_display' ? String(body.buildingName || '').trim().slice(0, 200) : null,
+        body.type === 'digital_display' ? String(body.resolution || '').trim().slice(0, 50) : null,
+        body.type === 'digital_display' ? (String(body.adDuration || '').trim().slice(0, 100) || null) : null,
+        Date.now()
+      ).run();
+      const fresh = await env.DB.prepare('SELECT * FROM billboard_formats WHERE id=?').bind(id).first();
+      return json({ format: formatRow(fresh) });
+    }
+
+    if (path === 'formats/delete' && method === 'POST') {
+      if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to manage formats.', 403);
+      await env.DB.prepare('DELETE FROM billboard_formats WHERE id=? AND owner_id=?').bind(body.id, me.id).run();
+      return json({ ok: true });
+    }
+
     if (path === 'billboards/mine' && method === 'GET') {
       if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to manage listings.', 403);
       const rows = await env.DB.prepare(
@@ -499,8 +557,8 @@ export async function onRequest(context) {
         `INSERT INTO billboards
          (id, owner_id, title, area, description, lat, lng, size, type, category, illuminated,
           price, traffic, peak_hours, audience_male, audience_female, audience_age, audience_income,
-          availability, approval_state, data_sources, image_data, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          availability, approval_state, data_sources, image_data, format_id, building_name, resolution, ad_duration, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         id, me.id, body.title.trim(), body.area.trim(), (body.description || '').trim(),
         Number(body.lat), Number(body.lng), body.size.trim(), body.type, body.category,
@@ -516,6 +574,10 @@ export async function onRequest(context) {
         'draft',
         JSON.stringify(cleanSources),
         img.value,
+        body.formatId || null,
+        body.type === 'digital_display' ? (String(body.buildingName || '').trim().slice(0, 200) || null) : null,
+        body.type === 'digital_display' ? (String(body.resolution || '').trim().slice(0, 50) || null) : null,
+        body.type === 'digital_display' ? (String(body.adDuration || '').trim().slice(0, 100) || null) : null,
         now, now
       ).run();
       await audit(env, me.id, 'billboard_create', id + ' — ' + body.title);
@@ -556,7 +618,7 @@ export async function onRequest(context) {
         `UPDATE billboards SET
            title=?, area=?, description=?, lat=?, lng=?, size=?, type=?, category=?, illuminated=?,
            price=?, traffic=?, peak_hours=?, audience_male=?, audience_female=?, audience_age=?, audience_income=?,
-           availability=?, approval_state=?, data_sources=?,${touchesImage ? ' image_data=?,' : ''} updated_at=?
+           availability=?, approval_state=?, data_sources=?, format_id=?, building_name=?, resolution=?, ad_duration=?,${touchesImage ? ' image_data=?,' : ''} updated_at=?
          WHERE id=?`
       ).bind(...[
         body.title.trim(), body.area.trim(), (body.description || '').trim(),
@@ -572,6 +634,10 @@ export async function onRequest(context) {
         body.availability || 'available',
         nextState,
         JSON.stringify(cleanSources),
+        body.formatId || null,
+        body.type === 'digital_display' ? (String(body.buildingName || '').trim().slice(0, 200) || null) : null,
+        body.type === 'digital_display' ? (String(body.resolution || '').trim().slice(0, 50) || null) : null,
+        body.type === 'digital_display' ? (String(body.adDuration || '').trim().slice(0, 100) || null) : null,
         ...(touchesImage ? [img.value] : []),
         Date.now(),
         body.id

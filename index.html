@@ -183,10 +183,8 @@
     cursor: help;
   }
   .src-badge.google { background: rgba(74,222,128,.15); color: var(--green); }
-  .src-badge.rda { background: rgba(96,165,250,.15); color: #60a5fa; }
   .src-badge.manual { background: rgba(251,191,36,.15); color: var(--amber); }
   [data-theme="light"] .src-badge.google { background: rgba(24,133,68,.12); color: var(--green); }
-  [data-theme="light"] .src-badge.rda { background: rgba(30,93,184,.12); color: #1e5db8; }
   [data-theme="light"] .src-badge.manual { background: rgba(163,101,10,.14); color: var(--amber); }
   .cite-line { font-size: 10px; color: var(--muted); font-style: italic; margin-top: 8px; line-height: 1.5; }
 
@@ -1188,6 +1186,9 @@ function apiToLocal(b) {
     lat: b.lat, lng: b.lng,
     type: b.type,
     size: b.size,
+    buildingName: b.buildingName || null,
+    resolution: b.resolution || null,
+    adDuration: b.adDuration || null,
     illuminated: !!b.illuminated,
     status: b.availability || 'available',
     price: b.price,
@@ -1560,23 +1561,17 @@ function selectBillboard(id) {
   // Only show metrics that have credible data. Attribute each with the source.
   const ds = b.dataSources || {};
 
-  // Determine which source contributed each metric (Manual > RDA > Google)
+  // Determine which source contributed each metric (Manual > Google)
   let trafficVal = null, trafficSrc = null, trafficCite = null;
   if (ds.manual && ds.manual.enabled && ds.manual.traffic != null) {
     trafficVal = ds.manual.traffic; trafficSrc = 'manual';
     trafficCite = ds.manual.source || 'Owner survey';
-  } else if (ds.rda && ds.rda.enabled && ds.rda.traffic != null) {
-    trafficVal = ds.rda.traffic; trafficSrc = 'rda';
-    trafficCite = (ds.rda.source || 'RDA report') + (ds.rda.year ? ' (' + ds.rda.year + ')' : '');
   }
 
   let peakVal = null, peakSrc = null, peakCite = null;
   if (ds.manual && ds.manual.enabled && ds.manual.peakHours && ds.manual.peakHours.length) {
     peakVal = ds.manual.peakHours; peakSrc = 'manual';
     peakCite = ds.manual.source || 'Owner survey';
-  } else if (ds.rda && ds.rda.enabled && ds.rda.peakHours && ds.rda.peakHours.length) {
-    peakVal = ds.rda.peakHours; peakSrc = 'rda';
-    peakCite = (ds.rda.source || 'RDA report') + (ds.rda.year ? ' (' + ds.rda.year + ')' : '');
   }
 
   let audienceVal = null, audienceCite = null;
@@ -1618,7 +1613,7 @@ function selectBillboard(id) {
   }
 
   const srcTag = (s, cite) => s
-    ? `<span class="src-badge ${s}" title="${cite ? String(cite).replace(/"/g, '&quot;') : ''}">${s === 'google' ? 'GOOGLE' : s === 'rda' ? 'RDA' : 'MANUAL'}</span>`
+    ? `<span class="src-badge ${s}" title="${cite ? String(cite).replace(/"/g, '&quot;') : ''}">${s === 'google' ? 'GOOGLE' : 'MANUAL'}</span>`
     : '';
 
   // Build the conditional sections
@@ -1677,6 +1672,20 @@ function selectBillboard(id) {
         ${chips ? `<div class="ctx-chips">${chips}</div>` : ''}
       </div>`;
   }
+
+  // Digital-display specifics — building, screen resolution, ad duration
+  let digitalSection = '';
+  if (b.type === 'digital_display' && (b.buildingName || b.resolution || b.adDuration)) {
+    digitalSection = `
+      <div class="section">
+        <h3>Digital Display</h3>
+        <div class="ctx-grid">
+          ${b.buildingName ? `<div class="ctx-row"><span class="ctx-l">Building</span><span class="ctx-v"><b>${esc(b.buildingName)}</b></span></div>` : ''}
+          ${b.resolution ? `<div class="ctx-row"><span class="ctx-l">Resolution</span><span class="ctx-v">${esc(b.resolution)}</span></div>` : ''}
+          ${b.adDuration ? `<div class="ctx-row"><span class="ctx-l">Ad Duration</span><span class="ctx-v">${esc(b.adDuration)}</span></div>` : ''}
+        </div>
+      </div>`;
+  }
   // Owner-uploaded photo (drone shot / billboard picture) leads the hero when present
   const photoPane = b.hasImage ? `
     <div class="hero-pane show" id="photoPane">
@@ -1690,7 +1699,7 @@ function selectBillboard(id) {
     <div class="section" style="text-align:center; padding:24px 20px;">
       <div style="color:var(--muted); font-size:12px; line-height:1.6;">
         <b style="color:var(--text);">No verified data yet</b><br/>
-        The owner hasn't added Google-verified, RDA-cited, or survey-backed data for this listing.
+        The owner hasn't added Google-verified or survey-backed data for this listing.
       </div>
     </div>` : '';
 
@@ -1741,6 +1750,8 @@ function selectBillboard(id) {
     </div>
 
     ${trafficChartSection}
+
+    ${digitalSection}
 
     ${audienceSection}
 

@@ -169,6 +169,7 @@
   }
   .modal-back.show { display:flex; animation:fadein .2s ease; }
   @keyframes fadein { from { opacity:0; } to { opacity:1; } }
+  .pac-container { z-index:1001; } /* above .modal-back so neighbourhood suggestions aren't hidden behind the modal */
   .modal {
     width:100%; max-width:720px; background:var(--panel); border:1px solid var(--line);
     box-shadow:var(--shadow); max-height:calc(100vh - 60px);
@@ -325,7 +326,6 @@
     padding:2px 6px; border-radius:2px; text-transform:uppercase;
   }
   .src-tag.google { background:var(--green-bg); color:var(--green); }
-  .src-tag.rda { background:var(--blue-bg); color:var(--blue); }
   .src-tag.manual { background:var(--amber-bg); color:var(--amber); }
   .src-desc { grid-column:2; color:var(--muted); font-size:11px; line-height:1.5; }
   .src-content {
@@ -340,6 +340,12 @@
     font-size:10px; color:var(--muted); line-height:1.5;
   }
   .req { color:var(--accent-text); }
+
+  .format-new {
+    margin-top:-8px; margin-bottom:16px; padding:12px 14px; border:1px solid var(--line);
+    background:var(--panel-2);
+  }
+  .format-new-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
 
   .g-context { display:flex; flex-direction:column; gap:8px; }
   .g-line {
@@ -393,7 +399,6 @@
     padding:2px 5px; border-radius:2px; text-transform:uppercase;
   }
   .pv-tag.google { background:var(--green-bg); color:var(--green); }
-  .pv-tag.rda { background:var(--blue-bg); color:var(--blue); }
   .pv-tag.manual { background:var(--amber-bg); color:var(--amber); }
   .pv-cite {
     display:block; color:var(--muted); font-size:10px; margin-top:2px; font-style:italic;
@@ -478,12 +483,32 @@
       <div class="form-row">
         <div>
           <label>Area / Neighbourhood *</label>
-          <input id="f-area" placeholder="Bambalapitiya" />
+          <input id="f-area" placeholder="Start typing a neighbourhood…" autocomplete="off" />
         </div>
         <div>
           <label>Size *</label>
-          <input id="f-size" placeholder="40x20 ft" />
+          <select id="f-size"></select>
         </div>
+      </div>
+
+      <div class="format-new hidden" id="formatNew">
+        <div id="formatNewPhysical">
+          <label>Size</label>
+          <input id="nf-size" placeholder="40x20 ft" maxlength="60" />
+        </div>
+        <div id="formatNewDigital" class="hidden">
+          <label>Building Name</label>
+          <input id="nf-building" placeholder="Liberty Plaza" maxlength="200" />
+          <label>Resolution</label>
+          <input id="nf-resolution" placeholder="1920x1080" maxlength="50" />
+          <label>Ad Duration <span style="color:var(--muted); text-transform:none; letter-spacing:0;">(optional)</span></label>
+          <input id="nf-duration" placeholder="15 sec loop" maxlength="100" />
+        </div>
+        <div class="format-new-actions">
+          <button type="button" class="btn ghost sm" id="formatNewCancel">Cancel</button>
+          <button type="button" class="btn sm" id="formatNewSave">Save Format</button>
+        </div>
+        <div class="err" id="formatNewErr"></div>
       </div>
 
       <label>Location * — click on the map to place your billboard</label>
@@ -523,20 +548,8 @@
 
       <label class="inline"><input type="checkbox" id="f-illuminated" class="checkbox" /> Illuminated at night</label>
 
-      <div class="form-row">
-        <div>
-          <label>Monthly Rate (LKR) *</label>
-          <input id="f-price" type="number" min="0" step="1000" placeholder="150000" />
-        </div>
-        <div>
-          <label>Availability</label>
-          <select id="f-availability">
-            <option value="available">Available</option>
-            <option value="pending">Pending</option>
-            <option value="booked">Booked</option>
-          </select>
-        </div>
-      </div>
+      <label>Monthly Rate (LKR) *</label>
+      <input id="f-price" type="number" min="0" step="1000" placeholder="150000" />
 
       <label>Description</label>
       <textarea id="f-desc" maxlength="500" placeholder="What makes this billboard special? Visibility, road context, etc."></textarea>
@@ -569,35 +582,6 @@
           </label>
           <div class="src-content" id="src-google-content">
             <div class="src-empty">Pick a location on the map above to fetch data.</div>
-          </div>
-        </div>
-
-        <!-- RDA -->
-        <div class="src-card" id="src-card-rda">
-          <label class="src-check">
-            <input type="checkbox" id="src-rda" />
-            <div class="src-title">
-              <span class="src-name">RDA Traffic Report</span>
-              <span class="src-tag rda">OFFICIAL</span>
-            </div>
-            <div class="src-desc">Verified vehicle counts from a Road Development Authority traffic census.</div>
-          </label>
-          <div class="src-content src-hidden" id="src-rda-content">
-            <div class="form-row">
-              <div>
-                <label>Daily Traffic (vehicles/day)</label>
-                <input id="rda-traffic" type="number" min="0" step="500" placeholder="42150" />
-              </div>
-              <div>
-                <label>Report Year</label>
-                <input id="rda-year" type="number" min="1990" max="2100" placeholder="2024" />
-              </div>
-            </div>
-            <label>Peak Hours (24-hour, comma-separated)</label>
-            <input id="rda-peaks" type="text" placeholder="7, 8, 17, 18" />
-            <label>Report Citation <span class="req">*</span></label>
-            <input id="rda-source" type="text" maxlength="200" placeholder="RDA Traffic Count Report — Colombo District 2024, Table 3.2" />
-            <p class="src-note">Cite the specific report and page/table so this claim can be verified.</p>
           </div>
         </div>
 
@@ -729,6 +713,10 @@ let pickerReady = false;
 let pickerEngine = null;      // 'google' | 'osm' | 'manual'
 let analyticsSeq = 0;         // race-guard: newer pin drops cancel older analytics
 let rejectTargetId = null;
+let myFormats = [];           // signed-in provider's own billboard-format catalog
+let formatsLoaded = false;
+let legacyFormatOption = null; // { size, buildingName, resolution, adDuration } — kept when editing a listing whose size predates the catalog
+let areaAutocomplete = null;  // google.maps.places.Autocomplete, wired once
 
 /* ---------------- theme ---------------- */
 $('themeBtn').addEventListener('click', () => {
@@ -769,6 +757,100 @@ function gate(title, msg) {
   $('gate-title').textContent = title;
   $('gate-msg').textContent = msg;
 }
+
+/* ---------------- billboard format catalog (per-provider Size dropdown) ---------------- */
+
+async function loadFormats() {
+  if (formatsLoaded) return;
+  try {
+    const r = await api('formats/list');
+    myFormats = r.formats || [];
+    formatsLoaded = true;
+  } catch (e) {
+    myFormats = [];
+  }
+}
+
+function formatLabel(f) {
+  if (f.type === 'digital_display' && (f.buildingName || f.resolution)) {
+    return [f.buildingName, f.resolution].filter(Boolean).join(' — ') + (f.adDuration ? ' · ' + f.adDuration : '');
+  }
+  return f.size || '—';
+}
+
+// Rebuilds the #f-size <select> from myFormats, filtered to the current #f-type.
+// selectFormatId, if given, is pre-selected when present in the rebuilt list.
+function populateSizeOptions(selectFormatId) {
+  const type = $('f-type').value;
+  const sel = $('f-size');
+  const matches = myFormats.filter(f => f.type === type);
+  let html = '';
+  if (legacyFormatOption && legacyFormatOption.type === type) {
+    html += `<option value="__legacy__">Current: ${esc(formatLabel(legacyFormatOption))} (custom)</option>`;
+  }
+  html += matches.map(f => `<option value="${f.id}">${esc(formatLabel(f))}</option>`).join('');
+  html += `<option value="__new__">+ Add new format…</option>`;
+  sel.innerHTML = html;
+  if (selectFormatId && [...sel.options].some(o => o.value === selectFormatId)) {
+    sel.value = selectFormatId;
+  } else if (legacyFormatOption && legacyFormatOption.type === type) {
+    sel.value = '__legacy__';
+  } else if (matches.length) {
+    sel.value = matches[0].id;
+  } else {
+    sel.value = '__new__';
+  }
+  syncSizeSelection();
+}
+
+function syncSizeSelection() {
+  if ($('f-size').value === '__new__') openFormatNew();
+  else $('formatNew').classList.add('hidden');
+}
+
+function openFormatNew() {
+  const type = $('f-type').value;
+  $('formatNew').classList.remove('hidden');
+  $('formatNewPhysical').classList.toggle('hidden', type === 'digital_display');
+  $('formatNewDigital').classList.toggle('hidden', type !== 'digital_display');
+  $('formatNewErr').classList.remove('show');
+  $('nf-size').value = ''; $('nf-building').value = ''; $('nf-resolution').value = ''; $('nf-duration').value = '';
+}
+
+$('f-type').addEventListener('change', () => populateSizeOptions());
+$('f-size').addEventListener('change', syncSizeSelection);
+
+$('formatNewCancel').addEventListener('click', () => {
+  const matches = myFormats.filter(f => f.type === $('f-type').value);
+  $('f-size').value = matches.length ? matches[0].id : (legacyFormatOption && legacyFormatOption.type === $('f-type').value ? '__legacy__' : '__new__');
+  syncSizeSelection();
+});
+
+$('formatNewSave').addEventListener('click', async () => {
+  const type = $('f-type').value;
+  const payload = { type };
+  if (type === 'digital_display') {
+    payload.buildingName = $('nf-building').value.trim();
+    payload.resolution = $('nf-resolution').value.trim();
+    payload.adDuration = $('nf-duration').value.trim();
+  } else {
+    payload.size = $('nf-size').value.trim();
+  }
+  const btn = $('formatNewSave');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'SAVING…';
+  try {
+    const r = await api('formats/create', payload);
+    myFormats.unshift(r.format);
+    populateSizeOptions(r.format.id);
+  } catch (e) {
+    const err = $('formatNewErr');
+    err.textContent = e.message;
+    err.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+});
 
 /* ---------------- LOCATION INTELLIGENCE (Google Places → source card) ---------------- */
 
@@ -915,7 +997,7 @@ function fmtHourList(hours) {
 
 // Toggle content visibility for checkboxes
 function wireSourceCheckboxes() {
-  ['google','rda','manual'].forEach(k => {
+  ['google','manual'].forEach(k => {
     const cb = $('src-'+k);
     const content = $('src-'+k+'-content');
     const sync = () => {
@@ -926,15 +1008,14 @@ function wireSourceCheckboxes() {
     // initial state
     sync();
   });
-  // Any input in RDA / Manual updates the preview
-  ['rda-traffic','rda-year','rda-peaks','rda-source',
-   'man-traffic','man-date','man-peaks','man-male','man-age','man-income','man-source','man-notes']
+  // Any input in Manual updates the preview
+  ['man-traffic','man-date','man-peaks','man-male','man-age','man-income','man-source','man-notes']
     .forEach(id => { const el = $(id); if (el) el.addEventListener('input', updatePreview); });
 }
 
 // Read the current form values into a dataSources object
 function readSources() {
-  const out = { google: null, rda: null, manual: null };
+  const out = { google: null, manual: null };
 
   if ($('src-google').checked && googleData) {
     out.google = {
@@ -943,17 +1024,6 @@ function readSources() {
       roadCategory: googleData.roadCategory,
       nearbyBusinesses: googleData.nearbyBusinesses,
       totalPOIs: googleData.totalPOIs
-    };
-  }
-  if ($('src-rda').checked) {
-    const t = parseInt($('rda-traffic').value, 10);
-    const y = parseInt($('rda-year').value, 10);
-    out.rda = {
-      enabled: true,
-      traffic: Number.isFinite(t) && t >= 0 ? t : null,
-      peakHours: parseHourList($('rda-peaks').value),
-      source: ($('rda-source').value || '').trim() || null,
-      year: Number.isFinite(y) ? y : null
     };
   }
   if ($('src-manual').checked) {
@@ -979,7 +1049,7 @@ function readSources() {
   return out;
 }
 
-// Compute effective (displayed) values per precedence: Manual > RDA > Google
+// Compute effective (displayed) values per precedence: Manual > Google
 // Returns { traffic, peakHours, audience, road, businesses, sources: {trafficSrc, peakSrc, ...} }
 function computeEffective(sources) {
   const eff = {
@@ -993,17 +1063,11 @@ function computeEffective(sources) {
   if (sources.manual && sources.manual.traffic != null) {
     eff.traffic = sources.manual.traffic; eff.trafficSrc = 'manual';
     eff.trafficCite = sources.manual.source || 'Owner survey';
-  } else if (sources.rda && sources.rda.traffic != null) {
-    eff.traffic = sources.rda.traffic; eff.trafficSrc = 'rda';
-    eff.trafficCite = (sources.rda.source || 'RDA report') + (sources.rda.year ? ' (' + sources.rda.year + ')' : '');
   }
   // Peak hours
   if (sources.manual && sources.manual.peakHours && sources.manual.peakHours.length) {
     eff.peakHours = sources.manual.peakHours; eff.peakSrc = 'manual';
     eff.peakCite = sources.manual.source || 'Owner survey';
-  } else if (sources.rda && sources.rda.peakHours && sources.rda.peakHours.length) {
-    eff.peakHours = sources.rda.peakHours; eff.peakSrc = 'rda';
-    eff.peakCite = (sources.rda.source || 'RDA report') + (sources.rda.year ? ' (' + sources.rda.year + ')' : '');
   }
   // Audience (only manual provides)
   if (sources.manual && sources.manual.audience) {
@@ -1061,7 +1125,6 @@ function pvRow(label, valueHtml, srcTag, cite) {
 }
 function srcLabel(k) {
   if (k === 'google') return 'GOOGLE';
-  if (k === 'rda') return 'RDA';
   if (k === 'manual') return 'MANUAL';
   return k.toUpperCase();
 }
@@ -1088,13 +1151,6 @@ function hydrateSources(ds) {
     googleData = null;
     $('src-google-content').innerHTML = '<div class="src-empty">Click the map to fetch or re-check to enable.</div>';
   }
-  // RDA
-  const r = ds.rda;
-  $('src-rda').checked = !!(r && r.enabled);
-  $('rda-traffic').value = (r && r.traffic != null) ? r.traffic : '';
-  $('rda-year').value = (r && r.year) || '';
-  $('rda-peaks').value = (r && r.peakHours && r.peakHours.length) ? r.peakHours.join(', ') : '';
-  $('rda-source').value = (r && r.source) || '';
   // Manual
   const m = ds.manual;
   $('src-manual').checked = !!(m && m.enabled);
@@ -1107,7 +1163,7 @@ function hydrateSources(ds) {
   $('man-source').value = (m && m.source) || '';
   $('man-notes').value = (m && m.notes) || '';
   // Refresh visibility
-  ['google','rda','manual'].forEach(k => {
+  ['google','manual'].forEach(k => {
     $('src-'+k+'-content').classList.toggle('src-hidden', !$('src-'+k).checked);
   });
   updatePreview();
@@ -1393,7 +1449,7 @@ $('photoRemoveBtn').addEventListener('click', () => {
   $('photoHint').textContent = 'Photo will be removed when you save.';
 });
 
-function openModal(b) {
+async function openModal(b) {
   editing = b;
   $('modalTitle').textContent = b ? 'EDIT BILLBOARD' : 'ADD BILLBOARD';
   $('f-err').classList.remove('show');
@@ -1412,9 +1468,20 @@ function openModal(b) {
   // Populate
   $('f-title').value = b ? b.title : '';
   $('f-area').value = b ? b.area : '';
-  $('f-size').value = b ? b.size : '';
   $('f-type').value = b ? b.type : 'hoarding';
   $('f-category').value = b ? b.category : 'arterial';
+
+  // Size: pull from the provider's own format catalog. A pre-catalog listing whose
+  // size doesn't match anything saved keeps its original value as a pinned "custom" option.
+  legacyFormatOption = (b && !b.formatId) ? {
+    type: b.type,
+    size: b.size,
+    buildingName: b.buildingName,
+    resolution: b.resolution,
+    adDuration: b.adDuration
+  } : null;
+  await loadFormats();
+  populateSizeOptions(b ? b.formatId : null);
   $('f-availability').value = b ? b.availability : 'available';
   $('f-illuminated').checked = b ? !!b.illuminated : true;
   $('f-price').value = b ? b.price : '';
@@ -1433,7 +1500,6 @@ function openModal(b) {
     // Legacy billboard with no dataSources — populate manual from stored values as a starting point
     const legacy = {
       google: null,
-      rda: null,
       manual: {
         enabled: !!(b.traffic || (b.peakHours && b.peakHours.length)),
         traffic: b.traffic || null,
@@ -1463,6 +1529,31 @@ function closeModal() {
 }
 
 /* ---------------- map picker ---------------- */
+// Restricts the Area/Neighbourhood field to short, city/neighbourhood-level Google
+// Places suggestions (e.g. "Mount Lavinia") — no full street addresses — and
+// re-centers the picker map on whatever the user selects.
+function wireAreaAutocomplete() {
+  if (areaAutocomplete) return; // wire once per page load
+  const input = $('f-area');
+  areaAutocomplete = new google.maps.places.Autocomplete(input, {
+    types: ['(regions)'],
+    componentRestrictions: { country: 'lk' },
+    fields: ['address_components', 'geometry']
+  });
+  areaAutocomplete.addListener('place_changed', () => {
+    const place = areaAutocomplete.getPlace();
+    if (!place) return;
+    const comps = place.address_components || [];
+    const pick = t => comps.find(c => c.types.includes(t));
+    const short = pick('sublocality_level_1') || pick('sublocality') || pick('neighborhood') || pick('locality');
+    if (short) input.value = short.long_name;
+    if (place.geometry) {
+      if (place.geometry.viewport) pickerMap.fitBounds(place.geometry.viewport);
+      else { pickerMap.setCenter(place.geometry.location); pickerMap.setZoom(15); }
+    }
+  });
+}
+
 async function setupPicker(lat, lng, hasExisting) {
   const container = $('picker-map');
   container.innerHTML = '';
@@ -1497,6 +1588,7 @@ async function setupPicker(lat, lng, hasExisting) {
     $('pickerHint').textContent = hasExisting
       ? 'Drag the marker or click a new spot to move the location.'
       : 'Click anywhere on the map to drop your billboard location.';
+    wireAreaAutocomplete();
   } else if (pickerEngine === 'osm') {
     await loadLeaflet();
     pickerMap = L.map(container, { zoomControl: true }).setView([lat, lng], hasExisting ? 15 : 12);
@@ -1590,15 +1682,42 @@ const GSTYLE_LIGHT = [
 ];
 
 /* ---------------- save ---------------- */
+// Resolves the current #f-size selection to { size, formatId, buildingName, resolution, adDuration }
+function resolveSelectedFormat() {
+  const val = $('f-size').value;
+  if (val === '__legacy__' && legacyFormatOption) {
+    return {
+      size: legacyFormatOption.size || '', formatId: null,
+      buildingName: legacyFormatOption.buildingName || null,
+      resolution: legacyFormatOption.resolution || null,
+      adDuration: legacyFormatOption.adDuration || null
+    };
+  }
+  const f = myFormats.find(x => x.id === val);
+  if (!f) return { size: '', formatId: null, buildingName: null, resolution: null, adDuration: null };
+  return {
+    size: f.type === 'digital_display' ? formatLabel(f) : (f.size || ''),
+    formatId: f.id,
+    buildingName: f.buildingName || null,
+    resolution: f.resolution || null,
+    adDuration: f.adDuration || null
+  };
+}
+
 function collectForm() {
   const latText = $('f-lat').textContent;
   const lngText = $('f-lng').textContent;
   const sources = readSources();
   const eff = computeEffective(sources);
+  const fmt = resolveSelectedFormat();
   const form = {
     title: $('f-title').value,
     area: $('f-area').value,
-    size: $('f-size').value,
+    size: fmt.size,
+    formatId: fmt.formatId,
+    buildingName: fmt.buildingName,
+    resolution: fmt.resolution,
+    adDuration: fmt.adDuration,
     type: $('f-type').value,
     category: $('f-category').value,
     availability: $('f-availability').value,
