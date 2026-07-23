@@ -1,0 +1,20 @@
+name = "billboardiq-traffic-engine"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cron fires hourly; the handler itself only acts during the 6 target
+# Colombo-local sampling slots (see src/index.js) so a single hourly
+# trigger covers all of them without six separate cron lines.
+[triggers]
+crons = ["0 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "billboardiq-db"
+database_id = "80403077-0db6-48c6-9d8f-9f4a13ec3a08"
+
+[browser]
+binding = "BROWSER"
+
+# Set with: wrangler secret put ANTHROPIC_API_KEY

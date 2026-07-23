@@ -18,6 +18,7 @@
      GET  formats/list         → provider+, own billboard-format catalog
      POST formats/create       → provider+
      POST formats/delete       → provider+
+     GET  billboards/<id>/traffic → owner/admin+, collected traffic-engine data
    ================================================================ */
 
 const PBKDF2_ITERATIONS = 100000; // lower to 50000 if you ever hit CPU limits on free tier
@@ -189,8 +190,10 @@ const BB_LIST_COLS = `b.id, b.owner_id, b.title, b.area, b.description, b.lat, b
   b.availability, b.approval_state, b.rejection_note, b.reviewed_by, b.reviewed_at,
   b.owner_verified, b.created_at, b.updated_at, b.data_sources,
   b.format_id, b.building_name, b.resolution, b.ad_duration,
-  b.booking_start, b.booking_end,
+  b.booking_start, b.booking_end, b.facing, b.ai_insights, b.ai_insights_updated_at,
   (b.image_data IS NOT NULL) AS has_image`;
+
+const COMPASS_DIRECTIONS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
 const MAX_IMAGE_CHARS = 1600000; // base64 chars ≈ 1.2MB binary, under D1's ~2MB row cap
 const IMAGE_DATA_URL = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/;
@@ -251,6 +254,9 @@ function bbRow(r) {
     availability: r.availability,
     bookingStart: r.booking_start || null,
     bookingEnd: r.booking_end || null,
+    facing: r.facing || null,
+    aiInsights: r.ai_insights || null,
+    aiInsightsUpdatedAt: r.ai_insights_updated_at || null,
     approvalState: r.approval_state,
     rejectionNote: r.rejection_note || null,
     reviewedAt: r.reviewed_at,
@@ -304,6 +310,7 @@ function validateBillboard(b) {
     if (!Number.isFinite(start) || !Number.isFinite(end)) return 'Please set a booking start and end date.';
     if (end <= start) return 'Booking end date must be after the start date.';
   }
+  if (b.facing && !COMPASS_DIRECTIONS.includes(b.facing)) return 'Facing must be one of N, NE, E, SE, S, SW, W, NW.';
   return null;
 }
 
@@ -567,8 +574,8 @@ export async function onRequest(context) {
          (id, owner_id, title, area, description, lat, lng, size, type, category, illuminated,
           price, traffic, peak_hours, audience_male, audience_female, audience_age, audience_income,
           availability, approval_state, data_sources, image_data, format_id, building_name, resolution, ad_duration,
-          booking_start, booking_end, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          booking_start, booking_end, facing, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         id, me.id, body.title.trim(), body.area.trim(), (body.description || '').trim(),
         Number(body.lat), Number(body.lng), body.size.trim(), body.type, body.category,
@@ -590,6 +597,7 @@ export async function onRequest(context) {
         body.type === 'digital_display' ? (String(body.adDuration || '').trim().slice(0, 100) || null) : null,
         body.availability === 'booked' ? Math.round(Number(body.bookingStart)) : null,
         body.availability === 'booked' ? Math.round(Number(body.bookingEnd)) : null,
+        body.facing || null,
         now, now
       ).run();
       await audit(env, me.id, 'billboard_create', id + ' — ' + body.title);
@@ -597,8 +605,27 @@ export async function onRequest(context) {
       return json({ billboard: bbRow(fresh) });
     }
 
+    // Collected traffic-analytics history for one billboard (owner or admin+ only) —
+    // populated by the standalone traffic-engine Worker (worker/), never written here.
+    if (method === 'GET' && /^billboards\/[^/]+\/traffic$/.test(path)) {
+      const id = path.split('/')[1];
+      const bb = await env.DB.prepare('SELECT owner_id, ai_insights, ai_insights_updated_at FROM billboards WHERE id=?').bind(id).first();
+      if (!bb) return bad('Billboard not found', 404);
+      if (bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
+      const rows = await env.DB.prepare(
+        'SELECT captured_at, congestion_score, density_label, note FROM traffic_snapshots WHERE billboard_id=? ORDER BY captured_at DESC LIMIT 500'
+      ).bind(id).all();
+      const snapshots = (rows.results || []).map(r => ({
+        capturedAt: r.captured_at,
+        congestionScore: r.congestion_score,
+        densityLabel: r.density_label,
+        note: r.note || null
+      }));
+      return json({ snapshots, aiInsights: bb.ai_insights || null, aiInsightsUpdatedAt: bb.ai_insights_updated_at || null });
+    }
+
     // Get a single billboard (owner or admin+ only)
-    if (path.startsWith('billboards/') && method === 'GET' && !path.startsWith('billboards/mine') && !path.startsWith('billboards/pending') && !path.startsWith('billboards/all')) {
+    if (path.startsWith('billboards/') && method === 'GET' && !path.startsWith('billboards/mine') && !path.startsWith('billboards/pending') && !path.startsWith('billboards/all') && !path.endsWith('/traffic') && !path.endsWith('/image')) {
       const id = path.split('/')[1];
       const bb = await env.DB.prepare('SELECT * FROM billboards WHERE id=?').bind(id).first();
       if (!bb) return bad('Billboard not found', 404);
@@ -631,7 +658,7 @@ export async function onRequest(context) {
            title=?, area=?, description=?, lat=?, lng=?, size=?, type=?, category=?, illuminated=?,
            price=?, traffic=?, peak_hours=?, audience_male=?, audience_female=?, audience_age=?, audience_income=?,
            availability=?, approval_state=?, data_sources=?, format_id=?, building_name=?, resolution=?, ad_duration=?,
-           booking_start=?, booking_end=?,${touchesImage ? ' image_data=?,' : ''} updated_at=?
+           booking_start=?, booking_end=?, facing=?,${touchesImage ? ' image_data=?,' : ''} updated_at=?
          WHERE id=?`
       ).bind(...[
         body.title.trim(), body.area.trim(), (body.description || '').trim(),
@@ -653,6 +680,7 @@ export async function onRequest(context) {
         body.type === 'digital_display' ? (String(body.adDuration || '').trim().slice(0, 100) || null) : null,
         body.availability === 'booked' ? Math.round(Number(body.bookingStart)) : null,
         body.availability === 'booked' ? Math.round(Number(body.bookingEnd)) : null,
+        body.facing || null,
         ...(touchesImage ? [img.value] : []),
         Date.now(),
         body.id

@@ -211,6 +211,12 @@
 
   .ov-map { height:260px; background:var(--panel-2); border:1px solid var(--line); margin-bottom:8px; }
 
+  .trend-chart .grid { stroke:var(--line); stroke-width:1; }
+  .trend-chart .area { fill:var(--accent); opacity:.1; stroke:none; }
+  .trend-chart .line { fill:none; stroke:var(--accent); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .trend-chart .dot { fill:var(--accent); stroke:var(--panel); stroke-width:2; }
+  .trend-chart .chart-label { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; fill:var(--text); }
+
   /* listing grid */
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px; }
   .bb-card {
@@ -597,6 +603,19 @@
         <span>LNG: <b id="f-lng">—</b></span>
       </div>
 
+      <label>Facing <span style="color:var(--muted); text-transform:none; letter-spacing:0;">(which way the board points)</span></label>
+      <select id="f-facing">
+        <option value="">— not specified —</option>
+        <option value="N">North</option>
+        <option value="NE">Northeast</option>
+        <option value="E">East</option>
+        <option value="SE">Southeast</option>
+        <option value="S">South</option>
+        <option value="SW">Southwest</option>
+        <option value="W">West</option>
+        <option value="NW">Northwest</option>
+      </select>
+
       <div class="nearby-block">
         <div class="nearby-head">
           <h3>Nearby &amp; Traffic</h3>
@@ -746,6 +765,19 @@
     <div class="modal-foot">
       <button class="btn ghost" id="rejectCancel">Cancel</button>
       <button class="btn danger" id="rejectConfirm">Reject</button>
+    </div>
+  </div>
+</div>
+
+<!-- Traffic analytics (read-only, collected by the background traffic engine) -->
+<div class="modal-back" id="trafficBack">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head">
+      <h2>TRAFFIC ANALYTICS</h2>
+      <button class="x-close" id="trafficClose" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="trafficBody">
+      <div class="src-empty">Loading…</div>
     </div>
   </div>
 </div>
@@ -1839,6 +1871,7 @@ function cardHTML(b, i) {
   const canSubmit = isMine && (b.approvalState === 'draft' || b.approvalState === 'rejected');
   const canApprove = isAdmin && b.approvalState === 'pending';
   const canReject = isAdmin && b.approvalState === 'pending';
+  const canViewTraffic = (isMine || isAdmin) && b.approvalState === 'approved';
 
   const ownerLine = (currentView !== 'mine' && b.ownerName)
     ? `<div class="bb-owner">OWNER: <b>${esc(b.ownerName)}</b> · ${esc(b.ownerEmail || '')}</div>` : '';
@@ -1867,6 +1900,7 @@ function cardHTML(b, i) {
       <div class="bb-price">LKR ${(b.price / 1000).toFixed(0)}K<small>/ month</small></div>
       <div class="bb-actions">
         ${canEdit ? `<button class="btn ghost sm" data-action="edit" data-id="${b.id}">Edit</button>` : ''}
+        ${canViewTraffic ? `<button class="btn ghost sm" data-action="traffic" data-id="${b.id}">Traffic Analytics</button>` : ''}
         ${canSubmit ? `<button class="btn sm" data-action="submit" data-id="${b.id}">Submit for Review</button>` : ''}
         ${canApprove ? `<button class="btn sm" data-action="approve" data-id="${b.id}">Approve</button>` : ''}
         ${canReject ? `<button class="btn danger sm" data-action="reject" data-id="${b.id}">Reject</button>` : ''}
@@ -1881,6 +1915,7 @@ async function handleAction(action, id) {
   if (!b) return;
   try {
     if (action === 'edit') { openEdit(b); return; }
+    if (action === 'traffic') { await openTrafficModal(b); return; }
     if (action === 'delete') {
       if (!confirm('Delete "' + b.title + '"? This cannot be undone.')) return;
       await api('billboards/delete', { id });
@@ -2034,6 +2069,7 @@ async function openModal(b) {
   $('f-booking-start').value = (b && b.bookingStart) ? new Date(b.bookingStart).toISOString().slice(0, 10) : '';
   $('f-booking-end').value = (b && b.bookingEnd) ? new Date(b.bookingEnd).toISOString().slice(0, 10) : '';
   syncBookingDates();
+  $('f-facing').value = b ? (b.facing || '') : '';
   $('f-illuminated').checked = b ? !!b.illuminated : true;
   $('f-price').value = b ? b.price : '';
   $('f-desc').value = b ? (b.description || '') : '';
@@ -2272,6 +2308,7 @@ function collectForm() {
     availability: $('f-availability').value,
     bookingStart: $('f-availability').value === 'booked' && $('f-booking-start').value ? new Date($('f-booking-start').value).getTime() : null,
     bookingEnd: $('f-availability').value === 'booked' && $('f-booking-end').value ? new Date($('f-booking-end').value).getTime() : null,
+    facing: $('f-facing').value || null,
     illuminated: $('f-illuminated').checked,
     price: $('f-price').value,
     // Effective values from source precedence (0/defaults if no source provides)
@@ -2343,11 +2380,117 @@ $('rejectConfirm').addEventListener('click', async () => {
   }
 });
 
+/* ---------------- traffic analytics modal ---------------- */
+$('trafficClose').addEventListener('click', () => $('trafficBack').classList.remove('show'));
+$('trafficBack').addEventListener('click', e => { if (e.target === $('trafficBack')) $('trafficBack').classList.remove('show'); });
+
+async function openTrafficModal(b) {
+  $('trafficBack').classList.add('show');
+  $('trafficBody').innerHTML = '<div class="src-empty">Loading…</div>';
+  try {
+    const data = await api('billboards/' + encodeURIComponent(b.id) + '/traffic');
+    $('trafficBody').innerHTML = renderTrafficBody(b, data);
+  } catch (e) {
+    $('trafficBody').innerHTML = '<div class="src-empty">Could not load traffic data: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderTrafficBody(b, data) {
+  const snapshots = data.snapshots || [];
+  if (!snapshots.length) {
+    return `
+      <h3 style="margin-bottom:8px;">${esc(b.title)}</h3>
+      <div class="src-empty">No traffic data collected yet — the background engine samples this location a few times a day, so check back once it's had a chance to run.</div>`;
+  }
+
+  // Oldest-first for the trend chart and hour-of-day bucketing.
+  const chrono = [...snapshots].sort((a, c) => a.capturedAt - c.capturedAt);
+  const scores = chrono.map(s => s.congestionScore);
+  const latest = chrono[chrono.length - 1];
+  const avg = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+  const days = new Set(chrono.map(s => new Date(s.capturedAt).toISOString().slice(0, 10))).size;
+
+  const hourBuckets = Array.from({ length: 24 }, () => []);
+  chrono.forEach(s => hourBuckets[new Date(s.capturedAt).getHours()].push(s.congestionScore));
+  const hourAvgs = hourBuckets.map(vals => vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null);
+  const maxHourAvg = Math.max(1, ...hourAvgs.filter(v => v != null));
+  const peakHour = hourAvgs.reduce((best, v, h) => (v != null && (best == null || v > hourAvgs[best])) ? h : best, null);
+
+  // Daily averages for the trend line, most recent 30 days.
+  const byDay = {};
+  chrono.forEach(s => {
+    const day = new Date(s.capturedAt).toISOString().slice(0, 10);
+    (byDay[day] = byDay[day] || []).push(s.congestionScore);
+  });
+  const dayEntries = Object.entries(byDay)
+    .map(([day, vals]) => [day, Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)])
+    .sort((a, c) => a[0].localeCompare(c[0]))
+    .slice(-30);
+
+  return `
+    <h3 style="margin-bottom:12px;">${esc(b.title)} <small style="font-family:'DM Sans',sans-serif; text-transform:none; letter-spacing:0; color:var(--muted); font-size:12px;">${esc(b.area)}</small></h3>
+    <div class="kpi-grid">
+      <div class="kpi-tile"><div class="kpi-label">Latest reading</div><div class="kpi-value">${latest.congestionScore}<small style="font-size:13px;"> / ${esc(latest.densityLabel)}</small></div></div>
+      <div class="kpi-tile"><div class="kpi-label">Average congestion</div><div class="kpi-value">${avg}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Days collected</div><div class="kpi-value">${days}</div></div>
+    </div>
+    <div class="ov-section">
+      <h3>Congestion Trend <small>daily average, last ${dayEntries.length} day${dayEntries.length === 1 ? '' : 's'}</small></h3>
+      ${trendChartSvg(dayEntries)}
+    </div>
+    <div class="ov-section">
+      <h3>Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
+      <div class="bar-list">${hourAvgs.map((v, h) => v == null ? '' : barRow(String(h).padStart(2, '0') + ':00', v, maxHourAvg, 'accent')).join('')}</div>
+    </div>
+    <div class="ov-section">
+      <h3>AI Insights</h3>
+      ${data.aiInsights
+        ? `<p style="font-size:13px; line-height:1.6;">${esc(data.aiInsights)}</p><div class="list-sub" style="margin-top:8px;">Updated ${daysAgo(data.aiInsightsUpdatedAt)}</div>`
+        : '<div class="src-empty">Not enough history yet for the AI to summarize — check back after a few more days of collection.</div>'}
+    </div>`;
+}
+
+// Hand-rolled line chart: single accent hue, 2px line, ~10% area wash, no
+// per-point clutter — just a hover title on each point and a direct label
+// on the most recent value (the one the story is about).
+function trendChartSvg(dayEntries) {
+  if (dayEntries.length < 2) {
+    return '<div class="src-empty">Need at least two days of history to chart a trend.</div>';
+  }
+  const W = 600, H = 140, padL = 8, padR = 44, padT = 12, padB = 20;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const n = dayEntries.length;
+  const x = i => padL + (n === 1 ? 0 : (i / (n - 1)) * innerW);
+  const y = v => padT + innerH - (v / 100) * innerH;
+
+  const points = dayEntries.map(([day, v], i) => [x(i), y(v), day, v]);
+  const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const areaPath = linePath + ` L${points[points.length - 1][0].toFixed(1)},${(padT + innerH).toFixed(1)}` +
+    ` L${points[0][0].toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
+  const last = points[points.length - 1];
+
+  const hitCircles = points.map(p =>
+    `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="8" fill="transparent"><title>${esc(p[2])}: ${p[3]}</title></circle>`
+  ).join('');
+
+  return `
+    <svg viewBox="0 0 ${W} ${H}" class="trend-chart" preserveAspectRatio="none" style="width:100%; height:${H}px;">
+      <line class="grid" x1="${padL}" y1="${(padT + innerH).toFixed(1)}" x2="${W - padR}" y2="${(padT + innerH).toFixed(1)}" />
+      <line class="grid" x1="${padL}" y1="${padT.toFixed(1)}" x2="${W - padR}" y2="${padT.toFixed(1)}" />
+      <path class="area" d="${areaPath}" />
+      <path class="line" d="${linePath}" />
+      <circle class="dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" />
+      <text class="chart-label" x="${(last[0] + 8).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}">${last[3]}</text>
+      ${hitCircles}
+    </svg>`;
+}
+
 /* ---------------- keyboard ---------------- */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if ($('modalBack').classList.contains('show')) closeModal();
     if ($('rejectBack').classList.contains('show')) $('rejectBack').classList.remove('show');
+    if ($('trafficBack').classList.contains('show')) $('trafficBack').classList.remove('show');
   }
 });
 </script>
