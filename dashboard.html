@@ -2395,12 +2395,26 @@ async function openTrafficModal(b) {
   }
 }
 
+function aiInsightsSectionHTML(data) {
+  return `
+    <div class="ov-section">
+      <h3>AI Insights</h3>
+      ${data.aiInsights
+        ? `<p style="font-size:13px; line-height:1.6;">${esc(data.aiInsights)}</p><div class="list-sub" style="margin-top:8px;">Updated ${daysAgo(data.aiInsightsUpdatedAt)}</div>`
+        : '<div class="src-empty">No assessment yet.</div>'}
+    </div>`;
+}
+
 function renderTrafficBody(b, data) {
   const snapshots = data.snapshots || [];
   if (!snapshots.length) {
     return `
-      <h3 style="margin-bottom:8px;">${esc(b.title)}</h3>
-      <div class="src-empty">No traffic data collected yet — the background engine samples this location a few times a day, so check back once it's had a chance to run.</div>`;
+      <h3 style="margin-bottom:12px;">${esc(b.title)} <small style="font-family:'DM Sans',sans-serif; text-transform:none; letter-spacing:0; color:var(--muted); font-size:12px;">${esc(b.area)}</small></h3>
+      <div class="ov-section">
+        <h3>Congestion Trend</h3>
+        <div class="src-empty">No numeric traffic history collected for this listing yet.</div>
+      </div>
+      ${aiInsightsSectionHTML(data)}`;
   }
 
   // Oldest-first for the trend chart and hour-of-day bucketing.
@@ -2442,12 +2456,7 @@ function renderTrafficBody(b, data) {
       <h3>Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
       <div class="bar-list">${hourAvgs.map((v, h) => v == null ? '' : barRow(String(h).padStart(2, '0') + ':00', v, maxHourAvg, 'accent')).join('')}</div>
     </div>
-    <div class="ov-section">
-      <h3>AI Insights</h3>
-      ${data.aiInsights
-        ? `<p style="font-size:13px; line-height:1.6;">${esc(data.aiInsights)}</p><div class="list-sub" style="margin-top:8px;">Updated ${daysAgo(data.aiInsightsUpdatedAt)}</div>`
-        : '<div class="src-empty">Not enough history yet for the AI to summarize — check back after a few more days of collection.</div>'}
-    </div>`;
+    ${aiInsightsSectionHTML(data)}`;
 }
 
 // Hand-rolled line chart: single accent hue, 2px line, ~10% area wash, no

@@ -3,11 +3,11 @@ main = "src/index.js"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Cron fires hourly; the handler itself only acts during the 6 target
-# Colombo-local sampling slots (see src/index.js) so a single hourly
-# trigger covers all of them without six separate cron lines.
-[triggers]
-crons = ["0 * * * *"]
+# Cron intentionally disabled for the POC — analytics are being run
+# interactively for now (see conversation). Re-enable when the Claude API
+# integration goes live commercially:
+#   [triggers]
+#   crons = ["0 * * * *"]  (fires hourly; handler self-filters to 6 Colombo-local slots)
 
 [[d1_databases]]
 binding = "DB"
