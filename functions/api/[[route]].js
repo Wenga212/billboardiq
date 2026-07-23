@@ -163,6 +163,7 @@ function safeUser(u, restricted) {
     id: u.id, email: u.email, name: u.name, role: u.role,
     companyName: u.company_name || null,
     mfaEnabled: !!u.mfa_enabled,
+    verified: !!u.verified,
     restricted: !!restricted,
     lastLogin: u.last_login, createdAt: u.created_at
   };
@@ -454,7 +455,7 @@ export async function onRequest(context) {
     if (path === 'admin/users' && method === 'GET') {
       if (ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Admin access required', 403);
       const rows = await env.DB.prepare(
-        'SELECT id,email,name,role,mfa_enabled,last_login,created_at FROM users ORDER BY created_at ASC'
+        'SELECT id,email,name,role,company_name,mfa_enabled,verified,last_login,created_at FROM users ORDER BY created_at ASC'
       ).all();
       return json({ users: rows.results.map(u => safeUser(u, false)) });
     }
