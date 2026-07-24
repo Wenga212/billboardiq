@@ -113,6 +113,20 @@ async function captureTrafficScreenshot(env, lat, lng) {
     await page.setViewport({ width: 900, height: 700 });
     const url = `https://www.google.com/maps/@${lat},${lng},17z/data=!5m1!1e1`;
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+
+    // A fresh (cookieless) Browser Rendering session gets Google's cookie-consent
+    // interstitial instead of the map on first load — dismiss it or every
+    // screenshot captures the dialog, not traffic data.
+    const dismissed = await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('button'))
+        .find(b => /^(accept all|reject all)$/i.test((b.textContent || '').trim()));
+      if (btn) { btn.click(); return true; }
+      return false;
+    }).catch(() => false);
+    if (dismissed) {
+      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
+    }
+
     // Give traffic tiles a moment to render after the network goes idle.
     await new Promise(r => setTimeout(r, 2500));
     const screenshot = await page.screenshot({ type: 'jpeg', quality: 70 });
