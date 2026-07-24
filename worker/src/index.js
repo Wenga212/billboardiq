@@ -3,13 +3,15 @@
    Cron-triggered. For every approved billboard:
      1. Screenshot Google Maps' live traffic layer at its coordinates
         (Browser Rendering — see wrangler.toml [browser] binding).
-     2. Send the screenshot to Claude's vision API for a structured read
-        of the congestion colors.
-     3. Store only the extracted numbers in D1 (traffic_snapshots) —
-        the screenshot itself is never persisted.
-     4. Periodically (per-billboard, low cadence) ask Claude for a plain-
-        language narrative from the accumulated history, cached on the
-        billboard row.
+     2. Store the screenshot in D1 (pending_snapshots) for analysis.
+
+   POC MODE: capture only. The Claude vision/narrative calls below
+   (analyzeScreenshot, refreshInsightIfDue) are fully built but NOT
+   invoked from scheduled() right now — per the user's call, analysis
+   is done interactively through a Claude Code session against the
+   pending_snapshots queue instead of a billed API integration, until
+   commercial launch. Re-wire them into scheduled() (and set
+   ANTHROPIC_API_KEY) at that point; no other changes should be needed.
 
    Fires hourly; only acts during the 6 target Colombo-local sampling
    slots so a single cron line covers all of them.
@@ -23,6 +25,7 @@ const CLAUDE_MODEL = 'claude-opus-4-8';
 const MAX_CONCURRENT_BROWSERS = 3;
 const INSIGHT_REFRESH_DAYS = 7;
 const INSIGHT_MIN_NEW_SNAPSHOTS = 20;
+const PENDING_RETENTION_DAYS = 7; // safety net if pending_snapshots isn't processed for a while
 
 function colomboLocalHour(date) {
   const utcMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
@@ -119,7 +122,10 @@ async function captureTrafficScreenshot(env, lat, lng) {
   }
 }
 
-async function processBillboard(env, billboard) {
+// Captures a traffic-layer screenshot and queues it in pending_snapshots for
+// analysis (interactive, via Claude Code — see file header). Replaces the
+// old capture+analyze-inline flow: no Claude call happens here for now.
+async function captureAndQueue(env, billboard) {
   let screenshot;
   try {
     screenshot = await captureTrafficScreenshot(env, billboard.lat, billboard.lng);
@@ -128,28 +134,16 @@ async function processBillboard(env, billboard) {
     return;
   }
 
-  let analysis;
-  try {
-    const base64 = arrayBufferToBase64(screenshot);
-    analysis = await analyzeScreenshot(env, base64);
-  } catch (e) {
-    console.error('Vision analysis failed for', billboard.id, e.message);
-    return;
-  } finally {
-    screenshot = null; // never persisted — discarded as soon as we're done with it
-  }
-
   const now = Date.now();
+  const base64 = arrayBufferToBase64(screenshot);
   await env.DB.prepare(
-    `INSERT INTO traffic_snapshots (id, billboard_id, captured_at, congestion_score, density_label, note, created_at)
-     VALUES (?,?,?,?,?,?,?)`
+    `INSERT INTO pending_snapshots (id, billboard_id, captured_at, image_data, created_at)
+     VALUES (?,?,?,?,?)`
   ).bind(
-    'TS-' + shortId(),
+    'PS-' + shortId(),
     billboard.id,
     now,
-    Math.max(0, Math.min(100, Math.round(analysis.congestionScore))),
-    ['free', 'moderate', 'heavy'].includes(analysis.densityLabel) ? analysis.densityLabel : 'moderate',
-    String(analysis.note || '').slice(0, 300),
+    'data:image/jpeg;base64,' + base64,
     now
   ).run();
 }
@@ -228,18 +222,20 @@ export default {
     const hour = colomboLocalHour(new Date(event.scheduledTime || Date.now()));
     if (!TARGET_HOURS_LOCAL.includes(hour)) return; // not one of the 6 sampling slots
 
+    // Safety net: drop any screenshot that's sat unprocessed too long, so an
+    // interactive-analysis gap doesn't grow the DB unbounded.
+    await env.DB.prepare('DELETE FROM pending_snapshots WHERE created_at < ?')
+      .bind(Date.now() - PENDING_RETENTION_DAYS * 86400000)
+      .run();
+
     const rows = await env.DB.prepare(
-      "SELECT id, lat, lng, title, area, type, price, traffic, ai_insights_updated_at FROM billboards WHERE approval_state='approved'"
+      "SELECT id, lat, lng FROM billboards WHERE approval_state='approved'"
     ).all();
     const billboards = rows.results || [];
     if (!billboards.length) return;
 
-    await runBatch(billboards, MAX_CONCURRENT_BROWSERS, b => processBillboard(env, b));
+    await runBatch(billboards, MAX_CONCURRENT_BROWSERS, b => captureAndQueue(env, b));
 
-    // Insight refresh is much cheaper (text-only) — fine to run sequentially after snapshots land.
-    for (const b of billboards) {
-      try { await refreshInsightIfDue(env, b); }
-      catch (e) { console.error('Insight refresh failed for', b.id, e.message); }
-    }
+    // analyzeScreenshot()/refreshInsightIfDue() intentionally not called here — see file header.
   }
 };

@@ -3,11 +3,12 @@ main = "src/index.js"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Cron intentionally disabled for the POC — analytics are being run
-# interactively for now (see conversation). Re-enable when the Claude API
-# integration goes live commercially:
-#   [triggers]
-#   crons = ["0 * * * *"]  (fires hourly; handler self-filters to 6 Colombo-local slots)
+# Fires hourly; the handler self-filters to 6 Colombo-local sampling slots.
+# Only captures + queues screenshots (pending_snapshots) — no Claude calls
+# happen in this Worker for the POC, so no paid API usage is incurred by
+# this cron. Analysis of pending_snapshots happens interactively instead.
+[triggers]
+crons = ["0 * * * *"]
 
 [[d1_databases]]
 binding = "DB"
