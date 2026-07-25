@@ -609,9 +609,11 @@ export async function onRequest(context) {
     // populated by the standalone traffic-engine Worker (worker/), never written here.
     if (method === 'GET' && /^billboards\/[^/]+\/traffic$/.test(path)) {
       const id = path.split('/')[1];
-      const bb = await env.DB.prepare('SELECT owner_id, ai_insights, ai_insights_updated_at FROM billboards WHERE id=?').bind(id).first();
+      const bb = await env.DB.prepare('SELECT owner_id, approval_state, ai_insights, ai_insights_updated_at FROM billboards WHERE id=?').bind(id).first();
       if (!bb) return bad('Billboard not found', 404);
-      if (bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
+      if (bb.approval_state !== 'approved' && bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) {
+        return bad('Not your billboard', 403);
+      }
       const rows = await env.DB.prepare(
         'SELECT captured_at, congestion_score, density_label, note FROM traffic_snapshots WHERE billboard_id=? ORDER BY captured_at DESC LIMIT 500'
       ).bind(id).all();

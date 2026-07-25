@@ -198,12 +198,37 @@
   .ctx-l { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 1.2px; color: var(--muted); text-transform: uppercase; }
   .ctx-v { font-size: 13px; text-align: right; }
   .ctx-v b { color: var(--accent-text); font-weight: 600; }
-  .ctx-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
-  .ctx-chips span {
-    font-family: 'JetBrains Mono', monospace; font-size: 10px;
-    padding: 3px 6px; border: 1px solid var(--line); color: var(--muted); background: var(--panel-2);
+
+  .src-empty { color: var(--muted); font-size: 11px; padding: 6px 0; font-style: italic; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kpi-tile { background: var(--panel-2); border: 1px solid var(--line); padding: 12px 14px; }
+  .kpi-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+  .kpi-value { font-size: 20px; font-weight: 600; margin-top: 4px; line-height: 1.1; }
+
+  .bar-list { display: flex; flex-direction: column; gap: 8px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; }
+  .bar-label { width: 46px; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+  .bar-track { flex: 1; height: 14px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 0 3px 3px 0; }
+  .bar-fill.accent { background: var(--accent); }
+  .bar-value { width: 30px; flex-shrink: 0; text-align: right; font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+  .trend-wrap { position: relative; }
+  .trend-chart .grid { stroke: var(--line); stroke-width: 1; }
+  .trend-chart .area { fill: var(--accent); opacity: .1; stroke: none; }
+  .trend-chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .trend-chart .dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+  .trend-chart .hover-line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; transition: opacity .1s; }
+  .trend-chart .hover-dot { fill: var(--text); stroke: var(--panel); stroke-width: 2; transition: opacity .1s; }
+  .trend-chart .chart-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; fill: var(--text); }
+  .chart-tooltip {
+    position: absolute; top: 0; left: 0; pointer-events: none;
+    background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow);
+    padding: 5px 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    white-space: nowrap; transition: opacity .1s; z-index: 5;
   }
-  .ctx-chips span b { color: var(--text); font-weight: 600; }
+
   .account-wrap { position: relative; }
   .account-btn {
     display: flex; align-items: center; gap: 8px;
@@ -1579,8 +1604,6 @@ function selectBillboard(id) {
     }
   }
 
-  const googleCtx = (ds.google && ds.google.enabled) ? ds.google : null;
-
   // Traffic-dependent computed values only when we have traffic
   const reach = trafficVal ? (trafficVal * 30 * 1.4) / 1000000 : null;
   const cpm = trafficVal ? (b.price / (trafficVal * 30 * 1.4)) * 1000 : null;
@@ -1651,24 +1674,6 @@ function selectBillboard(id) {
       <div class="cite-line">${audienceCite ? esc(audienceCite) : ''}</div>
     </div>` : '';
 
-  // Google location context — road name + nearby businesses
-  let roadContextSection = '';
-  if (googleCtx && (googleCtx.roadName || googleCtx.totalPOIs)) {
-    const chips = Object.entries(googleCtx.nearbyBusinesses || {})
-      .filter(([_, c]) => c > 0)
-      .map(([type, count]) => `<span><b>${count}</b> ${esc(type.replace(/_/g, ' '))}</span>`)
-      .join('');
-    roadContextSection = `
-      <div class="section">
-        <h3>Location Context <small>${srcTag('google', 'Google Maps')}</small></h3>
-        <div class="ctx-grid">
-          ${googleCtx.roadName ? `<div class="ctx-row"><span class="ctx-l">Road</span><span class="ctx-v"><b>${esc(googleCtx.roadName)}</b> · ${(googleCtx.roadCategory || '').toUpperCase()}</span></div>` : ''}
-          ${googleCtx.totalPOIs != null ? `<div class="ctx-row"><span class="ctx-l">Nearby (500m)</span><span class="ctx-v"><b>${googleCtx.totalPOIs}</b> mapped businesses</span></div>` : ''}
-        </div>
-        ${chips ? `<div class="ctx-chips">${chips}</div>` : ''}
-      </div>`;
-  }
-
   // Digital-display specifics — building, screen resolution, ad duration
   let digitalSection = '';
   if (b.type === 'digital_display' && (b.buildingName || b.resolution || b.adDuration)) {
@@ -1690,7 +1695,7 @@ function selectBillboard(id) {
     </div>` : '';
 
   // Nothing at all? Show a "no verified data" note in place of the specs
-  const nothingVerified = !trafficVal && !audienceVal && !googleCtx;
+  const nothingVerified = !trafficVal && !audienceVal;
   const noDataNote = nothingVerified ? `
     <div class="section" style="text-align:center; padding:24px 20px;">
       <div style="color:var(--muted); font-size:12px; line-height:1.6;">
@@ -1751,7 +1756,7 @@ function selectBillboard(id) {
 
     ${audienceSection}
 
-    ${roadContextSection}
+    <div id="aiTrafficSection"></div>
 
     ${noDataNote}
 
@@ -1796,6 +1801,173 @@ function selectBillboard(id) {
 
   if (isNarrow()) document.body.classList.add('detail-open');
   if (isMobile()) document.body.classList.remove('sidebar-open');
+
+  loadAiTrafficSection(b);
+}
+
+/* ============ AI TRAFFIC ANALYTICS (public detail view) ============ */
+async function loadAiTrafficSection(b) {
+  const host = document.getElementById('aiTrafficSection');
+  if (!host) return;
+  host.innerHTML = `
+    <div class="section">
+      <h3>Traffic Analytics <small>AI · GOOGLE MAPS</small></h3>
+      <div class="src-empty">Loading…</div>
+    </div>`;
+  let data;
+  try {
+    const res = await fetch('/api/billboards/' + encodeURIComponent(b.id) + '/traffic');
+    if (!res.ok) throw new Error('request failed');
+    data = await res.json();
+  } catch (e) {
+    host.innerHTML = '';
+    return;
+  }
+  // Detail view may have already moved on to a different billboard by the
+  // time this resolves — don't paint stale data over whatever's showing now.
+  if (activeId !== b.id) return;
+  host.innerHTML = renderAiTrafficSection(b, data);
+  if (data.snapshots && data.snapshots.length >= 2) initTrendChartHover(host);
+}
+
+function renderAiTrafficSection(b, data) {
+  const snapshots = data.snapshots || [];
+  const aiInsightsHtml = data.aiInsights
+    ? `<div class="section"><h3>AI Insights <small>CLAUDE</small></h3><p style="font-size:13px; line-height:1.6; color:var(--text);">${esc(data.aiInsights)}</p></div>`
+    : '';
+
+  if (!snapshots.length) {
+    return `
+      <div class="section">
+        <h3>Traffic Analytics <small>AI · GOOGLE MAPS</small></h3>
+        <div class="src-empty">No traffic history collected for this listing yet — the AI engine samples this location a few times a day and builds up a real congestion picture over time.</div>
+      </div>
+      ${aiInsightsHtml}`;
+  }
+
+  const chrono = [...snapshots].sort((x, y) => x.capturedAt - y.capturedAt);
+  const scores = chrono.map(s => s.congestionScore);
+  const latest = chrono[chrono.length - 1];
+  const avg = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+  const days = new Set(chrono.map(s => new Date(s.capturedAt).toISOString().slice(0, 10))).size;
+
+  const hourBuckets = Array.from({ length: 24 }, () => []);
+  chrono.forEach(s => hourBuckets[new Date(s.capturedAt).getHours()].push(s.congestionScore));
+  const hourAvgs = hourBuckets.map(vals => vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null);
+  const maxHourAvg = Math.max(1, ...hourAvgs.filter(v => v != null));
+  const peakHour = hourAvgs.reduce((best, v, h) => (v != null && (best == null || v > hourAvgs[best])) ? h : best, null);
+
+  const byDay = {};
+  chrono.forEach(s => {
+    const day = new Date(s.capturedAt).toISOString().slice(0, 10);
+    (byDay[day] = byDay[day] || []).push(s.congestionScore);
+  });
+  const dayEntries = Object.entries(byDay)
+    .map(([day, vals]) => [day, Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)])
+    .sort((x, y) => x[0].localeCompare(y[0]))
+    .slice(-30);
+
+  return `
+    <div class="section">
+      <h3>Traffic Analytics <small>AI · GOOGLE MAPS · ${days} day${days === 1 ? '' : 's'} collected</small></h3>
+      <div class="kpi-grid">
+        <div class="kpi-tile"><div class="kpi-label">Latest reading</div><div class="kpi-value">${latest.congestionScore}<small style="font-size:13px;"> / ${esc(latest.densityLabel)}</small></div></div>
+        <div class="kpi-tile"><div class="kpi-label">Average congestion</div><div class="kpi-value">${avg}</div></div>
+        <div class="kpi-tile"><div class="kpi-label">Peak hour</div><div class="kpi-value">${peakHour != null ? String(peakHour).padStart(2, '0') + ':00' : '—'}</div></div>
+      </div>
+      <h3 style="margin-top:4px;">Congestion Trend <small>daily average, last ${dayEntries.length} day${dayEntries.length === 1 ? '' : 's'}</small></h3>
+      ${trendChartSvg(dayEntries)}
+      <h3 style="margin-top:16px;">Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
+      <div class="bar-list">${hourAvgs.map((v, h) => v == null ? '' : barRow(String(h).padStart(2, '0') + ':00', v, maxHourAvg, 'accent')).join('')}</div>
+    </div>
+    ${aiInsightsHtml}`;
+}
+
+function barRow(label, value, max, hueClass) {
+  const pct = max ? Math.max(4, Math.round((value / max) * 100)) : 0;
+  return `<div class="bar-row">
+    <span class="bar-label">${esc(label)}</span>
+    <div class="bar-track"><div class="bar-fill ${hueClass}" style="width:${pct}%"></div></div>
+    <span class="bar-value">${value}</span>
+  </div>`;
+}
+
+// Hand-rolled line chart with a real crosshair + tooltip (not a native
+// per-dot title) so hovering shows the exact date and congestion score
+// anywhere along the line, not just when the cursor lands on a dot.
+function trendChartSvg(dayEntries) {
+  if (dayEntries.length < 2) {
+    return '<div class="src-empty">Need at least two days of history to chart a trend.</div>';
+  }
+  const W = 600, H = 140, padL = 8, padR = 44, padT = 12, padB = 20;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const n = dayEntries.length;
+  const x = i => padL + (n === 1 ? 0 : (i / (n - 1)) * innerW);
+  const y = v => padT + innerH - (v / 100) * innerH;
+
+  const points = dayEntries.map(([day, v], i) => [x(i), y(v), day, v]);
+  const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const areaPath = linePath + ` L${points[points.length - 1][0].toFixed(1)},${(padT + innerH).toFixed(1)}` +
+    ` L${points[0][0].toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
+  const last = points[points.length - 1];
+
+  const dataAttr = points.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)},${esc(p[2])},${p[3]}`).join('|');
+
+  return `
+    <div class="trend-wrap" data-points="${dataAttr}" data-padl="${padL}" data-padr="${W - padR}">
+      <svg viewBox="0 0 ${W} ${H}" class="trend-chart" preserveAspectRatio="none" style="width:100%; height:${H}px;">
+        <line class="grid" x1="${padL}" y1="${(padT + innerH).toFixed(1)}" x2="${W - padR}" y2="${(padT + innerH).toFixed(1)}" />
+        <line class="grid" x1="${padL}" y1="${padT.toFixed(1)}" x2="${W - padR}" y2="${padT.toFixed(1)}" />
+        <path class="area" d="${areaPath}" />
+        <path class="line" d="${linePath}" />
+        <line class="hover-line" x1="0" y1="${padT}" x2="0" y2="${padT + innerH}" style="opacity:0" />
+        <circle class="dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" />
+        <circle class="hover-dot" r="4" style="opacity:0" />
+        <text class="chart-label" x="${(last[0] + 8).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}">${last[3]}</text>
+      </svg>
+      <div class="chart-tooltip" style="opacity:0"></div>
+    </div>`;
+}
+
+// Wires the crosshair + tooltip for every .trend-wrap under `host`. Snaps to
+// the nearest data point by x-distance so the whole chart width is hoverable.
+function initTrendChartHover(host) {
+  host.querySelectorAll('.trend-wrap').forEach(wrap => {
+    const pts = wrap.dataset.points.split('|').map(s => {
+      const [px, py, day, val] = s.split(',');
+      return { x: parseFloat(px), y: parseFloat(py), day, val: Number(val) };
+    });
+    const svg = wrap.querySelector('svg');
+    const hoverLine = wrap.querySelector('.hover-line');
+    const hoverDot = wrap.querySelector('.hover-dot');
+    const tip = wrap.querySelector('.chart-tooltip');
+
+    const show = clientX => {
+      const rect = svg.getBoundingClientRect();
+      const svgX = ((clientX - rect.left) / rect.width) * 600;
+      let nearest = pts[0];
+      for (const p of pts) if (Math.abs(p.x - svgX) < Math.abs(nearest.x - svgX)) nearest = p;
+      hoverLine.setAttribute('x1', nearest.x); hoverLine.setAttribute('x2', nearest.x);
+      hoverLine.style.opacity = '1';
+      hoverDot.setAttribute('cx', nearest.x); hoverDot.setAttribute('cy', nearest.y);
+      hoverDot.style.opacity = '1';
+      const label = new Date(nearest.day + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      tip.textContent = label + ' — ' + nearest.val + ' / 100';
+      const pct = nearest.x / 600;
+      tip.style.left = (pct * 100) + '%';
+      tip.style.transform = `translate(${pct > 0.75 ? '-100%' : pct < 0.1 ? '0%' : '-50%'}, 0)`;
+      tip.style.top = Math.max(0, (nearest.y / 140) * 100 - 18) + '%';
+      tip.style.opacity = '1';
+    };
+    const hide = () => {
+      hoverLine.style.opacity = '0';
+      hoverDot.style.opacity = '0';
+      tip.style.opacity = '0';
+    };
+    wrap.addEventListener('mousemove', e => show(e.clientX));
+    wrap.addEventListener('mouseleave', hide);
+    wrap.addEventListener('touchstart', e => { if (e.touches[0]) show(e.touches[0].clientX); }, { passive: true });
+  });
 }
 
 function mountStreetView(b) {
