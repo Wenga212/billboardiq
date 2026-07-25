@@ -111,6 +111,12 @@ async function captureTrafficScreenshot(env, lat, lng) {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 900, height: 700 });
+    // Browser Rendering sessions egress from IPs that geolocate around
+    // Europe, so Google's consent interstitial (below) was showing up in
+    // whatever local language that IP implied (Czech, German, Russian seen
+    // in practice) — the button-text matcher only understood English and
+    // silently never fired. Forcing English here makes the match reliable.
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
     const url = `https://www.google.com/maps/@${lat},${lng},17z/data=!5m1!1e1`;
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
 
