@@ -9,6 +9,7 @@
   try { var t = localStorage.getItem('bbiq-theme'); if (t === 'dark') document.documentElement.setAttribute('data-theme','dark'); } catch (e) {}
 </script>
 <title>My Billboards — BillboardIQ</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171a17'/%3E%3Ctext x='16' y='23' font-family='Arial,sans-serif' font-size='20' font-weight='700' fill='%23cfec2f' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
 <style>
@@ -59,6 +60,10 @@
   }
   .logo::before { content:''; width:10px; height:10px; background:var(--accent); transform:rotate(45deg); }
   .logo b { color:var(--accent-text); font-weight:400; }
+  .app-version {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.5px;
+    color: var(--muted); font-weight: 400; align-self: flex-end; margin-bottom: 2px;
+  }
   .breadcrumb { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
   .breadcrumb span { color:var(--text); }
   .top-actions { margin-left:auto; display:flex; gap:10px; align-items:center; }
@@ -182,6 +187,13 @@
   .bar-fill.accent { background:var(--accent); }
   .bar-fill.blue { background:var(--blue); }
   .bar-value { width:70px; flex-shrink:0; text-align:right; font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+
+  .vbar-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 18px; }
+  .vbar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+  .vbar-value { font-size: 9px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-bottom: 3px; white-space: nowrap; }
+  .vbar-fill { width: 100%; border-radius: 2px 2px 0 0; background: var(--accent); min-height: 2px; }
+  .vbar-fill.peak { background: var(--blue); }
+  .vbar-label { font-size: 8px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 5px; writing-mode: vertical-rl; transform: rotate(180deg); height: 26px; }
 
   .list-rows { display:flex; flex-direction:column; }
   .list-row {
@@ -511,7 +523,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v0.1</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -2454,9 +2466,24 @@ function renderTrafficBody(b, data) {
     </div>
     <div class="ov-section">
       <h3>Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
-      <div class="bar-list">${hourAvgs.map((v, h) => v == null ? '' : barRow(String(h).padStart(2, '0') + ':00', v, maxHourAvg, 'accent')).join('')}</div>
+      ${vBarChart(hourAvgs, maxHourAvg, peakHour)}
     </div>
     ${aiInsightsSectionHTML(data)}`;
+}
+
+// Vertical bar graph, one column per hour with data — the value shown above
+// each bar is the average congestion score (0-100) for that hour.
+function vBarChart(hourAvgs, max, peakHour) {
+  const cols = hourAvgs.map((v, h) => {
+    if (v == null) return '';
+    const pct = max ? Math.max(3, Math.round((v / max) * 100)) : 0;
+    return `<div class="vbar-col">
+      <span class="vbar-value">${v}</span>
+      <div class="vbar-fill${h === peakHour ? ' peak' : ''}" style="height:${pct}%"></div>
+      <span class="vbar-label">${String(h).padStart(2, '0')}</span>
+    </div>`;
+  }).join('');
+  return `<div class="vbar-chart">${cols}</div>`;
 }
 
 // Hand-rolled line chart: single accent hue, 2px line, ~10% area wash, no
