@@ -1858,15 +1858,14 @@ function renderAiTrafficSection(b, data) {
   const maxHourAvg = Math.max(1, ...hourAvgs.filter(v => v != null));
   const peakHour = hourAvgs.reduce((best, v, h) => (v != null && (best == null || v > hourAvgs[best])) ? h : best, null);
 
-  const byDay = {};
-  chrono.forEach(s => {
-    const day = new Date(s.capturedAt).toISOString().slice(0, 10);
-    (byDay[day] = byDay[day] || []).push(s.congestionScore);
-  });
-  const dayEntries = Object.entries(byDay)
-    .map(([day, vals]) => [day, Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)])
-    .sort((x, y) => x[0].localeCompare(y[0]))
-    .slice(-30);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const within24h = chrono.filter(s => s.capturedAt >= Date.now() - dayMs);
+  const usingFallback = within24h.length < 2;
+  const recent = usingFallback ? chrono.slice(-24) : within24h;
+  const trendEntries = recent.map(s => [fmtPointLabel(s.capturedAt), s.congestionScore, s.capturedAt]);
+  const trendLabel = usingFallback
+    ? `last ${recent.length} reading${recent.length === 1 ? '' : 's'}`
+    : 'last 24h';
 
   return `
     <div class="section">
@@ -1876,8 +1875,8 @@ function renderAiTrafficSection(b, data) {
         <div class="kpi-tile"><div class="kpi-label">Average congestion</div><div class="kpi-value">${avg}</div></div>
         <div class="kpi-tile"><div class="kpi-label">Peak hour</div><div class="kpi-value">${peakHour != null ? String(peakHour).padStart(2, '0') + ':00' : '—'}</div></div>
       </div>
-      <h3 style="margin-top:4px;">Congestion Trend <small>daily average, last ${dayEntries.length} day${dayEntries.length === 1 ? '' : 's'}</small></h3>
-      ${trendChartSvg(dayEntries)}
+      <h3 style="margin-top:4px;">Congestion Trend <small>${trendLabel}</small></h3>
+      ${trendChartSvg(trendEntries)}
       <h3 style="margin-top:16px;">Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
       <div class="chart ai-chart">${vBarChart(hourAvgs, maxHourAvg, peakHour)}</div>
       <div class="chart-axis">
@@ -1902,21 +1901,49 @@ function vBarChart(hourAvgs, max, peakHour) {
   }).join('');
 }
 
+function fmtPointLabel(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
+    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+// Smooth Catmull-Rom-to-Bezier spline through a polyline's points — gives a
+// curved line without pulling in a charting library.
+function smoothPath(points) {
+  if (points.length < 3) {
+    return points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  }
+  let d = `M${points[0][0].toFixed(1)},${points[0][1].toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i === 0 ? 0 : i - 1];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2 < points.length ? i + 2 : i + 1];
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6, cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6, cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
 // Hand-rolled line chart with a real crosshair + tooltip (not a native
-// per-dot title) so hovering shows the exact date and congestion score
-// anywhere along the line, not just when the cursor lands on a dot.
-function trendChartSvg(dayEntries) {
-  if (dayEntries.length < 2) {
-    return '<div class="src-empty">Need at least two days of history to chart a trend.</div>';
+// per-dot title) so hovering shows the exact time and congestion score
+// anywhere along the line, not just when the cursor lands on a dot. Points
+// are positioned by actual elapsed time, not by index, so gaps in capture
+// history show up as gaps in the curve's spacing.
+function trendChartSvg(entries) {
+  if (entries.length < 2) {
+    return '<div class="src-empty">Need at least two readings to chart a trend.</div>';
   }
   const W = 600, H = 140, padL = 8, padR = 44, padT = 12, padB = 20;
   const innerW = W - padL - padR, innerH = H - padT - padB;
-  const n = dayEntries.length;
-  const x = i => padL + (n === 1 ? 0 : (i / (n - 1)) * innerW);
+  const times = entries.map(e => e[2]);
+  const tMin = times[0], tMax = times[times.length - 1];
+  const x = t => padL + (tMax === tMin ? 0 : ((t - tMin) / (tMax - tMin)) * innerW);
   const y = v => padT + innerH - (v / 100) * innerH;
 
-  const points = dayEntries.map(([day, v], i) => [x(i), y(v), day, v]);
-  const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const points = entries.map(([label, v, t]) => [x(t), y(v), label, v]);
+  const linePath = smoothPath(points);
   const areaPath = linePath + ` L${points[points.length - 1][0].toFixed(1)},${(padT + innerH).toFixed(1)}` +
     ` L${points[0][0].toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
   const last = points[points.length - 1];
@@ -1961,8 +1988,7 @@ function initTrendChartHover(host) {
       hoverLine.style.opacity = '1';
       hoverDot.setAttribute('cx', nearest.x); hoverDot.setAttribute('cy', nearest.y);
       hoverDot.style.opacity = '1';
-      const label = new Date(nearest.day + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      tip.textContent = label + ' — ' + nearest.val + ' / 100';
+      tip.textContent = nearest.day + ' — ' + nearest.val + ' / 100';
       const pct = nearest.x / 600;
       tip.style.left = (pct * 100) + '%';
       tip.style.transform = `translate(${pct > 0.75 ? '-100%' : pct < 0.1 ? '0%' : '-50%'}, 0)`;
