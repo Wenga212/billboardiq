@@ -3,10 +3,10 @@ main = "src/index.js"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Fires hourly; the handler self-filters to 6 Colombo-local sampling slots.
-# Only captures + queues screenshots (pending_snapshots) — no Claude calls
-# happen in this Worker for the POC, so no paid API usage is incurred by
-# this cron. Analysis of pending_snapshots happens interactively instead.
+# Fires hourly and captures every tick (24 samples/day/billboard) for denser
+# statistics. Only captures + queues screenshots (pending_snapshots) — no
+# Claude calls happen in this Worker for the POC, so no paid API usage is
+# incurred by this cron. Analysis of pending_snapshots happens interactively.
 [triggers]
 crons = ["0 * * * *"]
 

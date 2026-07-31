@@ -13,25 +13,20 @@
    commercial launch. Re-wire them into scheduled() (and set
    ANTHROPIC_API_KEY) at that point; no other changes should be needed.
 
-   Fires hourly; only acts during the 6 target Colombo-local sampling
-   slots so a single cron line covers all of them.
+   Fires hourly and captures on every tick (24 samples/day/billboard) —
+   widened from the original 6-slot Colombo sampling schedule because the
+   POC didn't have enough snapshots yet to build reliable congestion
+   statistics. This quadruples Browser Rendering usage vs. the old 6x/day
+   cadence; revisit if that becomes a cost/quota concern.
    ================================================================ */
 
 import puppeteer from '@cloudflare/puppeteer';
 
-const TARGET_HOURS_LOCAL = [6, 9, 12, 15, 18, 21]; // Colombo time (UTC+5:30)
-const COLOMBO_OFFSET_MINUTES = 5 * 60 + 30;
 const CLAUDE_MODEL = 'claude-opus-4-8';
 const MAX_CONCURRENT_BROWSERS = 3;
 const INSIGHT_REFRESH_DAYS = 7;
 const INSIGHT_MIN_NEW_SNAPSHOTS = 20;
 const PENDING_RETENTION_DAYS = 7; // safety net if pending_snapshots isn't processed for a while
-
-function colomboLocalHour(date) {
-  const utcMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
-  const localMinutes = (utcMinutes + COLOMBO_OFFSET_MINUTES) % (24 * 60);
-  return Math.floor(localMinutes / 60);
-}
 
 function shortId() {
   const bytes = crypto.getRandomValues(new Uint8Array(4));
@@ -239,9 +234,6 @@ async function runBatch(items, limit, fn) {
 
 export default {
   async scheduled(event, env, ctx) {
-    const hour = colomboLocalHour(new Date(event.scheduledTime || Date.now()));
-    if (!TARGET_HOURS_LOCAL.includes(hour)) return; // not one of the 6 sampling slots
-
     // Safety net: drop any screenshot that's sat unprocessed too long, so an
     // interactive-analysis gap doesn't grow the DB unbounded.
     await env.DB.prepare('DELETE FROM pending_snapshots WHERE created_at < ?')
