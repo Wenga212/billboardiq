@@ -211,12 +211,6 @@
   .kpi-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
   .kpi-value { font-size: 20px; font-weight: 600; margin-top: 4px; line-height: 1.1; }
 
-  .vbar-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 18px; }
-  .vbar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
-  .vbar-value { font-size: 9px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-bottom: 3px; white-space: nowrap; }
-  .vbar-fill { width: 100%; border-radius: 2px 2px 0 0; background: var(--accent); min-height: 2px; }
-  .vbar-fill.peak { background: var(--accent-2); }
-  .vbar-label { font-size: 8px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 5px; writing-mode: vertical-rl; transform: rotate(180deg); height: 26px; }
 
   .trend-wrap { position: relative; }
   .trend-chart .grid { stroke: var(--line); stroke-width: 1; }
@@ -1832,6 +1826,9 @@ async function loadAiTrafficSection(b) {
   if (activeId !== b.id) return;
   host.innerHTML = renderAiTrafficSection(b, data);
   if (data.snapshots && data.snapshots.length >= 2) initTrendChartHover(host);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    host.querySelectorAll('.ai-chart .bar').forEach(bar => { bar.style.height = bar.dataset.h + '%'; });
+  }));
 }
 
 function renderAiTrafficSection(b, data) {
@@ -1882,24 +1879,27 @@ function renderAiTrafficSection(b, data) {
       <h3 style="margin-top:4px;">Congestion Trend <small>daily average, last ${dayEntries.length} day${dayEntries.length === 1 ? '' : 's'}</small></h3>
       ${trendChartSvg(dayEntries)}
       <h3 style="margin-top:16px;">Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
-      ${vBarChart(hourAvgs, maxHourAvg, peakHour)}
+      <div class="chart ai-chart">${vBarChart(hourAvgs, maxHourAvg, peakHour)}</div>
+      <div class="chart-axis">
+        <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
+      </div>
     </div>
     ${aiInsightsHtml}`;
 }
 
-// Vertical bar graph, one column per hour with data — the value shown above
-// each bar is the average congestion score (0-100) for that hour.
+// Same .chart/.bar component as the Traffic Pattern section above, driven by
+// real AI congestion readings instead of estimated vehicle counts. Hours with
+// no snapshot data yet render as flat bars with no hover tooltip.
 function vBarChart(hourAvgs, max, peakHour) {
-  const cols = hourAvgs.map((v, h) => {
-    if (v == null) return '';
-    const pct = max ? Math.max(3, Math.round((v / max) * 100)) : 0;
-    return `<div class="vbar-col">
-      <span class="vbar-value">${v}</span>
-      <div class="vbar-fill${h === peakHour ? ' peak' : ''}" style="height:${pct}%"></div>
-      <span class="vbar-label">${String(h).padStart(2, '0')}</span>
-    </div>`;
+  return hourAvgs.map((v, h) => {
+    if (v == null) return `<div class="bar" data-h="0"></div>`;
+    const pct = max ? Math.round((v / max) * 100) : 0;
+    let cls = 'bar';
+    if (h === peakHour) cls += ' peak';
+    else if (pct > 50) cls += ' high';
+    else if (pct > 20) cls += ' med';
+    return `<div class="${cls}" data-h="${pct}" data-val="${String(h).padStart(2, '0')}:00 · ${v} congestion"></div>`;
   }).join('');
-  return `<div class="vbar-chart">${cols}</div>`;
 }
 
 // Hand-rolled line chart with a real crosshair + tooltip (not a native

@@ -188,12 +188,26 @@
   .bar-fill.blue { background:var(--blue); }
   .bar-value { width:70px; flex-shrink:0; text-align:right; font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
 
-  .vbar-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 18px; }
-  .vbar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
-  .vbar-value { font-size: 9px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-bottom: 3px; white-space: nowrap; }
-  .vbar-fill { width: 100%; border-radius: 2px 2px 0 0; background: var(--accent); min-height: 2px; }
-  .vbar-fill.peak { background: var(--blue); }
-  .vbar-label { font-size: 8px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 5px; writing-mode: vertical-rl; transform: rotate(180deg); height: 26px; }
+  .chart { height: 80px; display: flex; align-items: flex-end; gap: 3px; }
+  .bar {
+    flex: 1; background: var(--line); position: relative;
+    min-height: 4px; height: 4px;
+    transition: height .5s cubic-bezier(.22,.9,.35,1), background .2s;
+  }
+  .bar.peak { background: var(--accent); }
+  .bar.high { background: color-mix(in srgb, var(--accent) 60%, transparent); }
+  .bar.med { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .bar:hover { background: var(--blue); }
+  .bar:hover::after {
+    content: attr(data-val); position: absolute; bottom: 100%; left: 50%;
+    transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line);
+    color: var(--text); padding: 3px 6px; font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; white-space: nowrap; margin-bottom: 4px; z-index: 10;
+  }
+  .chart-axis {
+    display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; color: var(--muted); margin-top: 6px; letter-spacing: .5px;
+  }
 
   .list-rows { display:flex; flex-direction:column; }
   .list-row {
@@ -2402,6 +2416,9 @@ async function openTrafficModal(b) {
   try {
     const data = await api('billboards/' + encodeURIComponent(b.id) + '/traffic');
     $('trafficBody').innerHTML = renderTrafficBody(b, data);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      $('trafficBody').querySelectorAll('.ai-chart .bar').forEach(bar => { bar.style.height = bar.dataset.h + '%'; });
+    }));
   } catch (e) {
     $('trafficBody').innerHTML = '<div class="src-empty">Could not load traffic data: ' + esc(e.message) + '</div>';
   }
@@ -2466,24 +2483,27 @@ function renderTrafficBody(b, data) {
     </div>
     <div class="ov-section">
       <h3>Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
-      ${vBarChart(hourAvgs, maxHourAvg, peakHour)}
+      <div class="chart ai-chart">${vBarChart(hourAvgs, maxHourAvg, peakHour)}</div>
+      <div class="chart-axis">
+        <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
+      </div>
     </div>
     ${aiInsightsSectionHTML(data)}`;
 }
 
-// Vertical bar graph, one column per hour with data — the value shown above
-// each bar is the average congestion score (0-100) for that hour.
+// Same .chart/.bar component used on the public map's Traffic Pattern
+// section, driven by real AI congestion readings. Hours with no snapshot
+// data yet render as flat bars with no hover tooltip.
 function vBarChart(hourAvgs, max, peakHour) {
-  const cols = hourAvgs.map((v, h) => {
-    if (v == null) return '';
-    const pct = max ? Math.max(3, Math.round((v / max) * 100)) : 0;
-    return `<div class="vbar-col">
-      <span class="vbar-value">${v}</span>
-      <div class="vbar-fill${h === peakHour ? ' peak' : ''}" style="height:${pct}%"></div>
-      <span class="vbar-label">${String(h).padStart(2, '0')}</span>
-    </div>`;
+  return hourAvgs.map((v, h) => {
+    if (v == null) return `<div class="bar" data-h="0"></div>`;
+    const pct = max ? Math.round((v / max) * 100) : 0;
+    let cls = 'bar';
+    if (h === peakHour) cls += ' peak';
+    else if (pct > 50) cls += ' high';
+    else if (pct > 20) cls += ' med';
+    return `<div class="${cls}" data-h="${pct}" data-val="${String(h).padStart(2, '0')}:00 · ${v} congestion"></div>`;
   }).join('');
-  return `<div class="vbar-chart">${cols}</div>`;
 }
 
 // Hand-rolled line chart: single accent hue, 2px line, ~10% area wash, no
