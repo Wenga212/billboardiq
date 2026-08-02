@@ -15,6 +15,9 @@
      POST admin/role           → superuser
      POST admin/users/delete   → superuser
      GET  admin/audit          → superuser
+     GET  admin/ai-engine/status → superuser, pending snapshot count
+     POST admin/ai-engine/run  → superuser, streams NDJSON progress — analyzes
+                                  queued pending_snapshots with Claude vision
      GET  formats/list         → provider+, own billboard-format catalog
      POST formats/create       → provider+
      POST formats/delete       → provider+
@@ -30,6 +33,7 @@ const MIN_PASSWORD_LEN = 10;
 const MFA_REQUIRED_ROLES = ['admin', 'superuser'];
 const ROLE_RANK = { user: 1, provider: 1, admin: 2, superuser: 3 };
 const PUBLISH_ROLES = ['provider', 'admin', 'superuser'];
+const CLAUDE_MODEL = 'claude-opus-4-8';
 
 const enc = new TextEncoder();
 
@@ -175,6 +179,120 @@ async function audit(env, userId, action, detail) {
     await env.DB.prepare('INSERT INTO audit_log (user_id, action, detail, created_at) VALUES (?,?,?,?)')
       .bind(userId || null, action, (detail || '').slice(0, 300), Date.now()).run();
   } catch (e) { /* audit must never break auth */ }
+}
+
+/* ---------------- AI traffic engine (manual run, superuser only) ----------
+   Mirrors worker/src/index.js's analyzeScreenshot() — that Worker only
+   captures screenshots into pending_snapshots; this is the interactive
+   analysis half (Claude vision call + write to traffic_snapshots), now
+   triggerable from the admin console instead of a Claude Code session. */
+async function analyzeScreenshot(env, imageBase64) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 400,
+      output_config: {
+        format: {
+          type: 'json_schema',
+          schema: {
+            type: 'object',
+            properties: {
+              congestionScore: { type: 'integer' },
+              densityLabel: { type: 'string', enum: ['free', 'moderate', 'heavy'] },
+              note: { type: 'string' }
+            },
+            required: ['congestionScore', 'densityLabel', 'note'],
+            additionalProperties: false
+          }
+        }
+      },
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } },
+          {
+            type: 'text',
+            text: 'This is a screenshot of Google Maps with the live traffic layer enabled, centered on a billboard location. ' +
+              'Read the colored road segments (green = free-flowing, yellow/orange = moderate, red = heavy congestion) visible ' +
+              'in roughly a 500m radius around the center of the image. Estimate an overall congestion score from 0 (completely ' +
+              'free-flowing) to 100 (gridlocked), pick the closest density label, and write one short sentence describing what ' +
+              'you see (which roads are congested, if any). If no colored traffic data is visible at all, use congestionScore 0, ' +
+              'densityLabel "free", and say so in the note.'
+          }
+        ]
+      }]
+    })
+  });
+  if (!resp.ok) throw new Error('Claude vision call failed: ' + resp.status + ' ' + (await resp.text()));
+  const data = await resp.json();
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text block in Claude response');
+  return JSON.parse(textBlock.text);
+}
+
+// Streams newline-delimited JSON progress events while it works through
+// pending_snapshots one row at a time — the response body IS the job, so
+// there's no separate polling endpoint to keep in sync.
+function runAiEngine(env, me) {
+  const encoder = new TextEncoder();
+  let ctrl;
+  const stream = new ReadableStream({ start(c) { ctrl = c; } });
+  const send = obj => ctrl.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
+
+  (async () => {
+    let processed = 0, failed = 0;
+    try {
+      const rows = await env.DB.prepare(
+        'SELECT id, billboard_id, captured_at, image_data FROM pending_snapshots ORDER BY captured_at ASC'
+      ).all();
+      const pending = rows.results || [];
+      send({ type: 'start', total: pending.length });
+
+      if (!pending.length) {
+        send({ type: 'log', message: 'No pending snapshots — nothing to analyze.' });
+      }
+
+      for (let i = 0; i < pending.length; i++) {
+        const row = pending[i];
+        send({ type: 'log', message: `Analyzing ${row.billboard_id} (${i + 1}/${pending.length})…`, done: i, total: pending.length });
+        try {
+          const base64 = row.image_data.replace(/^data:image\/\w+;base64,/, '');
+          const result = await analyzeScreenshot(env, base64);
+          await env.DB.prepare(
+            `INSERT INTO traffic_snapshots (id, billboard_id, captured_at, congestion_score, density_label, note, created_at)
+             VALUES (?,?,?,?,?,?,?)`
+          ).bind('TS-' + shortId(), row.billboard_id, row.captured_at, result.congestionScore, result.densityLabel, result.note, Date.now()).run();
+          await env.DB.prepare('DELETE FROM pending_snapshots WHERE id=?').bind(row.id).run();
+          processed++;
+          send({
+            type: 'log',
+            message: `→ ${row.billboard_id}: congestion ${result.congestionScore} (${result.densityLabel}) — ${result.note}`,
+            done: i + 1, total: pending.length
+          });
+        } catch (e) {
+          failed++;
+          send({ type: 'log', message: `✗ ${row.billboard_id} failed: ${e.message}`, done: i + 1, total: pending.length, error: true });
+        }
+      }
+
+      await audit(env, me.id, 'ai_engine_run', `${processed} processed, ${failed} failed`);
+      send({ type: 'complete', processed, failed });
+    } catch (e) {
+      send({ type: 'error', message: e.message });
+    } finally {
+      ctrl.close();
+    }
+  })();
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }
+  });
 }
 
 function validEmail(e) { return typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e.length <= 200; }
@@ -508,6 +626,18 @@ export async function onRequest(context) {
         'SELECT a.id, a.action, a.detail, a.created_at, u.email FROM audit_log a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.id DESC LIMIT 100'
       ).all();
       return json({ events: rows.results });
+    }
+
+    if (path === 'admin/ai-engine/status' && method === 'GET') {
+      if (me.role !== 'superuser') return bad('Superuser access required', 403);
+      const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM pending_snapshots').first();
+      return json({ pending: row.n });
+    }
+
+    if (path === 'admin/ai-engine/run' && method === 'POST') {
+      if (me.role !== 'superuser') return bad('Superuser access required', 403);
+      if (!env.ANTHROPIC_API_KEY) return bad('ANTHROPIC_API_KEY is not configured for this environment.', 500);
+      return runAiEngine(env, me);
     }
 
     /* ================================================================
