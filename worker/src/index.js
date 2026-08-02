@@ -27,6 +27,8 @@ const MAX_CONCURRENT_BROWSERS = 3;
 const INSIGHT_REFRESH_DAYS = 7;
 const INSIGHT_MIN_NEW_SNAPSHOTS = 20;
 const PENDING_RETENTION_DAYS = 7; // safety net if pending_snapshots isn't processed for a while
+const MAX_CAPTURE_ATTEMPTS = 3; // Google's bot-detection/consent wall blocks ~1 in 5 captures at 24x/day/billboard
+const CAPTURE_RETRY_DELAY_MS = 1500;
 
 function shortId() {
   const bytes = crypto.getRandomValues(new Uint8Array(4));
@@ -102,39 +104,68 @@ async function analyzeScreenshot(env, imageBase64) {
 // consumer web UI rather than a supported Maps Platform API (see schema/006
 // migration note and this session's plan for the full caveat).
 async function captureTrafficScreenshot(env, lat, lng) {
-  const browser = await puppeteer.launch(env.BROWSER);
-  try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 900, height: 700 });
-    // Browser Rendering sessions egress from IPs that geolocate around
-    // Europe, so Google's consent interstitial (below) was showing up in
-    // whatever local language that IP implied (Czech, German, Russian seen
-    // in practice) — the button-text matcher only understood English and
-    // silently never fired. Forcing English here makes the match reliable.
-    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
-    const url = `https://www.google.com/maps/@${lat},${lng},17z/data=!5m1!1e1`;
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+  let lastBlockedUrl = null;
 
-    // A fresh (cookieless) Browser Rendering session gets Google's cookie-consent
-    // interstitial instead of the map on first load — dismiss it or every
-    // screenshot captures the dialog, not traffic data.
-    const dismissed = await page.evaluate(() => {
-      const btn = Array.from(document.querySelectorAll('button'))
-        .find(b => /^(accept all|reject all)$/i.test((b.textContent || '').trim()));
-      if (btn) { btn.click(); return true; }
-      return false;
-    }).catch(() => false);
-    if (dismissed) {
-      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
+  for (let attempt = 1; attempt <= MAX_CAPTURE_ATTEMPTS; attempt++) {
+    const browser = await puppeteer.launch(env.BROWSER);
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 900, height: 700 });
+      // Browser Rendering sessions egress from IPs that geolocate around
+      // Europe, so Google's consent interstitial (below) was showing up in
+      // whatever local language that IP implied (Czech, German, French,
+      // Russian seen in practice) — forcing English here makes it show up
+      // in English most of the time, but not always, hence matching a few
+      // languages below too.
+      await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+      const url = `https://www.google.com/maps/@${lat},${lng},17z/data=!5m1!1e1`;
+      await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+
+      // A fresh (cookieless) Browser Rendering session gets Google's cookie-consent
+      // interstitial instead of the map on first load — dismiss it or every
+      // screenshot captures the dialog, not traffic data.
+      const dismissed = await page.evaluate(() => {
+        const labels = /^(accept all|reject all|tout accepter|tout refuser)$/i;
+        const btn = Array.from(document.querySelectorAll('button'))
+          .find(b => labels.test((b.textContent || '').trim()));
+        if (btn) { btn.click(); return true; }
+        return false;
+      }).catch(() => false);
+      if (dismissed) {
+        await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
+      }
+
+      // Google's bot-detection interstitial (redirects to a /sorry/ URL) and
+      // an undismissed consent wall (consent.google.*) both mean whatever we'd
+      // screenshot next is a block page, not traffic data — retry with a
+      // fresh browser session instead of queuing garbage. Found by manually
+      // auditing a backlog where ~1 in 5 captures were one of these two.
+      // Checked by URL first; body text is a fallback in case Google ever
+      // serves either interstitial without a URL change.
+      const finalUrl = page.url();
+      let blocked = /\/sorry\//.test(finalUrl) || /consent\.google\./.test(finalUrl);
+      if (!blocked) {
+        blocked = await page.evaluate(() => {
+          const t = document.body ? document.body.innerText : '';
+          return /detected unusual traffic|avant d.acc[ée]der [àa] google/i.test(t);
+        }).catch(() => false);
+      }
+      if (blocked) {
+        lastBlockedUrl = finalUrl;
+        continue;
+      }
+
+      // Give traffic tiles a moment to render after the network goes idle.
+      await new Promise(r => setTimeout(r, 2500));
+      const screenshot = await page.screenshot({ type: 'jpeg', quality: 70 });
+      return screenshot;
+    } finally {
+      await browser.close();
     }
-
-    // Give traffic tiles a moment to render after the network goes idle.
-    await new Promise(r => setTimeout(r, 2500));
-    const screenshot = await page.screenshot({ type: 'jpeg', quality: 70 });
-    return screenshot;
-  } finally {
-    await browser.close();
+    if (attempt < MAX_CAPTURE_ATTEMPTS) await new Promise(r => setTimeout(r, CAPTURE_RETRY_DELAY_MS));
   }
+
+  throw new Error(`Blocked by Google after ${MAX_CAPTURE_ATTEMPTS} attempts (last: ${lastBlockedUrl})`);
 }
 
 // Captures a traffic-layer screenshot and queues it in pending_snapshots for
