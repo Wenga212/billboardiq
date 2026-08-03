@@ -65,8 +65,8 @@
     --bg: #e9eae4;
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; overflow: hidden; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   body {
     background: var(--bg);
     color: var(--text);
@@ -78,8 +78,10 @@
   html.theming, html.theming *, html.theming *::before, html.theming *::after {
     transition: background-color .28s ease, color .28s ease, border-color .28s ease, box-shadow .28s ease !important;
   }
-  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; touch-action: manipulation; }
+  a { touch-action: manipulation; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sidebar .listings, .detail, .hero-pane, .modal-body { -webkit-overflow-scrolling: touch; }
 
   /* ================= TOP BAR ================= */
   header {
@@ -910,8 +912,8 @@
   .bar.peak { background: var(--accent); }
   .bar.high { background: color-mix(in srgb, var(--accent) 60%, transparent); }
   .bar.med { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-  .bar:hover { background: var(--accent-2); }
-  .bar:hover::after {
+  .bar:hover, .bar.tap-active { background: var(--accent-2); }
+  .bar:hover::after, .bar.tap-active::after {
     content: attr(data-val);
     position: absolute;
     bottom: 100%;
@@ -1052,9 +1054,11 @@
   }
 
   @media (max-width: 760px) {
-    header { gap: 12px; padding: 0 14px; }
+    header { gap: 8px; padding: 0 12px; }
     .account-name, .account-caret { display: none; }
     .account-btn { padding: 4px; }
+    .app-version { display: none; }
+    #listBtn span.btn-label { display: none; }
     .app { grid-template-columns: 1fr; }
     .sidebar {
       position: fixed;
@@ -1073,6 +1077,23 @@
     .detail { width: 100vw; }
     .map-overlay { padding: 8px 12px; }
     .map-overlay .value { font-size: 12px; }
+
+    /* Larger touch targets — desktop sizes are comfortable for a mouse
+       pointer but tight for a fingertip (~44px is the usual comfort floor). */
+    .icon-btn { width: 38px; height: 38px; }
+    .icon-btn svg { width: 16px; height: 16px; }
+    .count-chip { height: 32px; padding: 0 10px; }
+    .btn { padding: 11px 16px; }
+    .htab { padding: 10px 12px; }
+    /* Map pins are 18px — fine for a mouse pointer, too small to reliably
+       tap. Padding grows the .gm-marker hit area without shifting the
+       visual dot off its geo point (transform:translate(-50%,-50%)
+       re-centers on the new, larger box automatically). */
+    .gm-marker { padding: 11px; }
+
+    /* iOS Safari zooms the page on focus of any input under 16px — keep
+       everything at/above that on mobile regardless of the desktop size. */
+    .search-row input, .search-row select { font-size: 16px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1106,7 +1127,7 @@
       <span id="countValue">0</span>
     </span>
     <button class="icon-btn" id="themeBtn" title="Switch light / dark" aria-label="Switch light or dark theme"></button>
-    <button class="btn" id="listBtn" onclick="goListBillboard()" title="List a billboard" aria-label="List a billboard">+ Add Billboard</button>
+    <button class="btn" id="listBtn" onclick="goListBillboard()" title="List a billboard" aria-label="List a billboard">+<span class="btn-label"> Add Billboard</span></button>
     <div class="account-wrap">
       <button class="account-btn" id="accountBtn" aria-haspopup="menu" aria-expanded="false">
         <div class="avatar guest" id="avatar">?</div>
@@ -2003,6 +2024,8 @@ function initTrendChartHover(host) {
     wrap.addEventListener('mousemove', e => show(e.clientX));
     wrap.addEventListener('mouseleave', hide);
     wrap.addEventListener('touchstart', e => { if (e.touches[0]) show(e.touches[0].clientX); }, { passive: true });
+    wrap.addEventListener('touchmove', e => { if (e.touches[0]) show(e.touches[0].clientX); }, { passive: true });
+    wrap.addEventListener('touchend', hide);
   });
 }
 
@@ -2061,6 +2084,16 @@ function goListBillboard() {
 /* ============ MOBILE DRAWERS ============ */
 document.getElementById('invFab').addEventListener('click', () => document.body.classList.add('sidebar-open'));
 document.getElementById('sbClose').addEventListener('click', () => document.body.classList.remove('sidebar-open'));
+
+// Bar-chart tooltips (Traffic Pattern, AI Peak Hours) are CSS :hover-only,
+// which never fires on touch — this delegated tap handler is the touch
+// equivalent, toggling the same ::after tooltip via a .tap-active class.
+// Delegated on document since the bars are re-rendered into the DOM often.
+document.addEventListener('click', e => {
+  const bar = e.target.closest('.bar[data-val]');
+  document.querySelectorAll('.bar.tap-active').forEach(b => { if (b !== bar) b.classList.remove('tap-active'); });
+  if (bar) bar.classList.toggle('tap-active');
+});
 
 /* ============ KEYBOARD NAV ============ */
 document.addEventListener('keydown', e => {

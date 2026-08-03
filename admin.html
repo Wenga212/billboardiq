@@ -31,11 +31,12 @@
   [data-theme="light"] {
     --bg:#e9eae4;
   }
-  * { margin:0; padding:0; box-sizing:border-box; }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html { scroll-behavior:smooth; }
   html.theming, html.theming * { transition: background-color .28s, color .28s, border-color .28s !important; }
-  body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
+  body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
   .mono { font-family:'JetBrains Mono',monospace; }
-  button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+  button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; touch-action:manipulation; }
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
   header {
@@ -63,7 +64,7 @@
   h2 { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:2px; font-weight:400; margin:26px 0 4px; }
   .sub { color:var(--muted); font-size:12px; margin-bottom:12px; }
 
-  .panel { background:var(--panel); border:1px solid var(--line); overflow-x:auto; }
+  .panel { background:var(--panel); border:1px solid var(--line); overflow-x:auto; -webkit-overflow-scrolling:touch; }
   table { width:100%; border-collapse:collapse; min-width:720px; }
   th {
     font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.5px;
@@ -143,6 +144,23 @@
   }
   .toast.show { transform:translateX(-50%) translateY(0); }
   .hidden { display:none; }
+
+  @media (max-width: 760px) {
+    header { flex-wrap: wrap; height: auto; min-height: 56px; padding: 10px 14px; gap: 8px 12px; }
+    .breadcrumb, .app-version { display: none; }
+    .top-actions { width: 100%; justify-content: flex-end; }
+    main { padding: 18px 14px 48px; }
+    h2 { font-size: 19px; }
+
+    /* The user table is inherently wide (6 columns) — .panel's overflow-x
+       already lets it scroll horizontally rather than crush columns, this
+       just makes the scroll itself feel native on touch and gives the
+       row/cell touch targets a bit more room. */
+    td, th { padding: 10px 12px; }
+    select.role-set { padding: 8px; }
+    .del { padding: 8px 10px; }
+    .pill, .btn-run { padding: 10px 14px; }
+  }
 </style>
 </head>
 <body>

@@ -32,17 +32,20 @@
   [data-theme="light"] {
     --bg:#e9eae4;
   }
-  * { margin:0; padding:0; box-sizing:border-box; }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html { scroll-behavior:smooth; }
   html.theming, html.theming * { transition: background-color .28s, color .28s, border-color .28s !important; }
   body {
     background:var(--bg); color:var(--text);
     font-family:'DM Sans',sans-serif; font-size:14px;
     -webkit-font-smoothing:antialiased;
     min-height:100vh; min-height:100dvh;
+    overflow-x:hidden;
   }
   .mono { font-family:'JetBrains Mono',monospace; }
-  button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+  button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; touch-action:manipulation; }
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .modal-body { -webkit-overflow-scrolling:touch; }
 
   /* header */
   header {
@@ -197,8 +200,8 @@
   .bar.peak { background: var(--accent); }
   .bar.high { background: color-mix(in srgb, var(--accent) 60%, transparent); }
   .bar.med { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-  .bar:hover { background: var(--blue); }
-  .bar:hover::after {
+  .bar:hover, .bar.tap-active { background: var(--blue); }
+  .bar:hover::after, .bar.tap-active::after {
     content: attr(data-val); position: absolute; bottom: 100%; left: 50%;
     transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line);
     color: var(--text); padding: 3px 6px; font-family: 'JetBrains Mono', monospace;
@@ -532,6 +535,31 @@
   }
   .toast.show { transform:translateX(-50%) translateY(0); }
   .hidden { display:none !important; }
+
+  @media (max-width: 760px) {
+    header { flex-wrap: wrap; height: auto; min-height: 56px; padding: 10px 14px; gap: 8px 12px; }
+    .breadcrumb, .app-version { display: none; }
+    .top-actions { width: 100%; justify-content: flex-end; }
+    main { padding: 18px 14px 48px; }
+    .page-head { flex-wrap: wrap; gap: 10px; }
+    .page-head h1 { font-size: 24px; }
+
+    /* Touch targets — desktop-comfortable sizes are tight for a fingertip. */
+    .pill, .btn { padding: 10px 14px; }
+    .x-close { width: 38px; height: 38px; }
+    .hr-chip { min-width: 38px; min-height: 32px; }
+    .del { padding: 8px 10px; }
+
+    /* iOS Safari zooms on focus of any input under 16px. */
+    input, select, textarea { font-size: 16px; }
+
+    /* Fixed-width label columns are cramped under ~380px of usable width —
+       stack label above value instead of squeezing both onto one row. */
+    .a-metric, .pv-row {
+      grid-template-columns: 1fr;
+      gap: 2px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -2563,6 +2591,15 @@ function trendChartSvg(entries) {
       ${hitCircles}
     </svg>`;
 }
+
+// Bar-chart tooltips are CSS :hover-only, which never fires on touch — this
+// delegated tap handler is the touch equivalent (same ::after tooltip, shown
+// via a .tap-active class instead). Delegated since bars re-render often.
+document.addEventListener('click', e => {
+  const bar = e.target.closest('.bar[data-val]');
+  document.querySelectorAll('.bar.tap-active').forEach(b => { if (b !== bar) b.classList.remove('tap-active'); });
+  if (bar) bar.classList.toggle('tap-active');
+});
 
 /* ---------------- keyboard ---------------- */
 document.addEventListener('keydown', e => {
