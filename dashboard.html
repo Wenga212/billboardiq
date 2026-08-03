@@ -17,16 +17,16 @@
     --bg:#e9eae4; --panel:#f5f6f1; --panel-2:#e0e2d9; --line:#cdd1c4;
     --text:#171a17; --muted:#67706a;
     --accent:#cfec2f; --accent-ink:#151810; --accent-text:#5f7a00;
-    --green:#188544; --amber:#a3650a; --red:#cc3b3b; --blue:#1e5db8;
-    --green-bg:rgba(24,133,68,.12); --amber-bg:rgba(163,101,10,.14); --red-bg:rgba(204,59,59,.12); --blue-bg:rgba(30,93,184,.12);
+    --green:#188544; --amber:#a3650a; --red:#cc3b3b; --blue:#1e5db8; --severe:#7a1220;
+    --green-bg:rgba(24,133,68,.12); --amber-bg:rgba(163,101,10,.14); --red-bg:rgba(204,59,59,.12); --blue-bg:rgba(30,93,184,.12); --severe-bg:rgba(122,18,32,.12);
     --overlay:rgba(245,246,241,.92); --shadow:0 8px 30px rgba(20,24,18,.18);
   }
   [data-theme="dark"] {
     --bg:#0b0d0c; --panel:#121514; --panel-2:#181b1a; --line:#242827;
     --text:#ecebe4; --muted:#6b7270;
     --accent:#d4ff3a; --accent-ink:#0b0d0c; --accent-text:#d4ff3a;
-    --green:#4ade80; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa;
-    --green-bg:rgba(74,222,128,.12); --amber-bg:rgba(251,191,36,.12); --red-bg:rgba(248,113,113,.12); --blue-bg:rgba(96,165,250,.12);
+    --green:#4ade80; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa; --severe:#b91c2f;
+    --green-bg:rgba(74,222,128,.12); --amber-bg:rgba(251,191,36,.12); --red-bg:rgba(248,113,113,.12); --blue-bg:rgba(96,165,250,.12); --severe-bg:rgba(185,28,47,.15);
     --overlay:rgba(11,13,12,.92); --shadow:0 8px 30px rgba(0,0,0,.5);
   }
   [data-theme="light"] {
@@ -197,10 +197,18 @@
     min-height: 4px; height: 4px;
     transition: height .5s cubic-bezier(.22,.9,.35,1), background .2s;
   }
-  .bar.peak { background: var(--accent); }
-  .bar.high { background: color-mix(in srgb, var(--accent) 60%, transparent); }
-  .bar.med { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-  .bar:hover, .bar.tap-active { background: var(--blue); }
+  /* Real-world severity tiers — literal green/orange/red/dark-red, matching
+     Google's own traffic-layer legend, rather than a relative-to-max
+     gradient of one hue. */
+  .bar.free { background: var(--green); }
+  .bar.moderate { background: var(--amber); }
+  .bar.heavy { background: var(--red); }
+  .bar.severe { background: var(--severe); }
+  .bar.free:hover, .bar.moderate:hover, .bar.heavy:hover, .bar.severe:hover,
+  .bar.free.tap-active, .bar.moderate.tap-active, .bar.heavy.tap-active, .bar.severe.tap-active {
+    filter: brightness(1.2);
+  }
+  .bar.is-peak-hour { box-shadow: 0 0 0 2px var(--text) inset; }
   .bar:hover::after, .bar.tap-active::after {
     content: attr(data-val); position: absolute; bottom: 100%; left: 50%;
     transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line);
@@ -2462,6 +2470,35 @@ function aiInsightsSectionHTML(data) {
     </div>`;
 }
 
+// Google's own traffic-layer legend (green/orange/red/dark-red, tied to
+// speed relative to free-flow) is the source of truth for these bands —
+// see analyzeScreenshot()'s prompt in worker/src/index.js and
+// functions/api/[[route]].js. Kept here too so hour-bucket averages (which
+// don't have a single reading's own densityLabel) can be classified
+// consistently.
+function labelForScore(v) {
+  if (v >= 85) return 'severe';
+  if (v >= 55) return 'heavy';
+  if (v >= 25) return 'moderate';
+  return 'free';
+}
+function severityColor(label) {
+  return { free: 'var(--green)', moderate: 'var(--amber)', heavy: 'var(--red)', severe: 'var(--severe)' }[label] || 'var(--muted)';
+}
+
+// Rough vehicle-count estimate: redistributes the billboard's stated daily
+// traffic across the hours we have AI congestion readings for, weighted by
+// relative congestion (a +5 floor keeps free-flowing hours from being
+// estimated at literally zero cars). A heuristic, not a measurement —
+// always shown with a "~".
+function estimateHourlyVehicles(hourAvgs, dailyTraffic) {
+  if (!dailyTraffic) return hourAvgs.map(() => null);
+  const weights = hourAvgs.map(v => v == null ? 0 : v + 5);
+  const total = weights.reduce((s, w) => s + w, 0);
+  if (!total) return hourAvgs.map(() => null);
+  return hourAvgs.map((v, h) => v == null ? null : Math.round(dailyTraffic * weights[h] / total));
+}
+
 function renderTrafficBody(b, data) {
   const snapshots = data.snapshots || [];
   if (!snapshots.length) {
@@ -2476,9 +2513,10 @@ function renderTrafficBody(b, data) {
 
   // Oldest-first for the trend chart and hour-of-day bucketing.
   const chrono = [...snapshots].sort((a, c) => a.capturedAt - c.capturedAt);
-  const scores = chrono.map(s => s.congestionScore);
   const latest = chrono[chrono.length - 1];
-  const avg = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+  const labelCounts = {};
+  chrono.forEach(s => { labelCounts[s.densityLabel] = (labelCounts[s.densityLabel] || 0) + 1; });
+  const typicalLabel = Object.entries(labelCounts).sort((a, c) => c[1] - a[1])[0][0];
   const days = new Set(chrono.map(s => new Date(s.capturedAt).toISOString().slice(0, 10))).size;
 
   const hourBuckets = Array.from({ length: 24 }, () => []);
@@ -2487,11 +2525,17 @@ function renderTrafficBody(b, data) {
   const maxHourAvg = Math.max(1, ...hourAvgs.filter(v => v != null));
   const peakHour = hourAvgs.reduce((best, v, h) => (v != null && (best == null || v > hourAvgs[best])) ? h : best, null);
 
+  const dailyTraffic = (b.dataSources && b.dataSources.manual && b.dataSources.manual.enabled) ? b.dataSources.manual.traffic : null;
+  const hourVehicleEst = estimateHourlyVehicles(hourAvgs, dailyTraffic);
+
   const dayMs = 24 * 60 * 60 * 1000;
   const within24h = chrono.filter(s => s.capturedAt >= Date.now() - dayMs);
   const usingFallback = within24h.length < 2;
   const recent = usingFallback ? chrono.slice(-24) : within24h;
-  const trendEntries = recent.map(s => [fmtPointLabel(s.capturedAt), s.congestionScore, s.capturedAt]);
+  const trendEntries = recent.map(s => {
+    const hour = new Date(s.capturedAt).getHours();
+    return [fmtPointLabel(s.capturedAt), s.congestionScore, s.capturedAt, s.densityLabel, hourVehicleEst[hour]];
+  });
   const trendLabel = usingFallback
     ? `last ${recent.length} reading${recent.length === 1 ? '' : 's'}`
     : 'last 24h';
@@ -2499,8 +2543,8 @@ function renderTrafficBody(b, data) {
   return `
     <h3 style="margin-bottom:12px;">${esc(b.title)} <small style="font-family:'DM Sans',sans-serif; text-transform:none; letter-spacing:0; color:var(--muted); font-size:12px;">${esc(b.area)}</small></h3>
     <div class="kpi-grid">
-      <div class="kpi-tile"><div class="kpi-label">Latest reading</div><div class="kpi-value">${latest.congestionScore}<small style="font-size:13px;"> / ${esc(latest.densityLabel)}</small></div></div>
-      <div class="kpi-tile"><div class="kpi-label">Average congestion</div><div class="kpi-value">${avg}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Latest conditions</div><div class="kpi-value" style="font-size:17px; color:${severityColor(latest.densityLabel)}">${esc(latest.densityLabel.toUpperCase())}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Typical level</div><div class="kpi-value" style="font-size:17px; color:${severityColor(typicalLabel)}">${esc(typicalLabel.toUpperCase())}</div></div>
       <div class="kpi-tile"><div class="kpi-label">Days collected</div><div class="kpi-value">${days}</div></div>
     </div>
     <div class="ov-section">
@@ -2509,7 +2553,7 @@ function renderTrafficBody(b, data) {
     </div>
     <div class="ov-section">
       <h3>Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
-      <div class="chart ai-chart">${vBarChart(hourAvgs, maxHourAvg, peakHour)}</div>
+      <div class="chart ai-chart">${vBarChart(hourAvgs, maxHourAvg, peakHour, hourVehicleEst)}</div>
       <div class="chart-axis">
         <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
       </div>
@@ -2517,18 +2561,20 @@ function renderTrafficBody(b, data) {
     ${aiInsightsSectionHTML(data)}`;
 }
 
-// Same .chart/.bar component used on the public map's Traffic Pattern
-// section, driven by real AI congestion readings. Hours with no snapshot
-// data yet render as flat bars with no hover tooltip.
-function vBarChart(hourAvgs, max, peakHour) {
+// .chart/.bar bars colored by absolute severity tier (matching Google's own
+// traffic-layer legend — see labelForScore()) instead of a relative-to-max
+// gradient. The peak hour gets an outline rather than its own color, so
+// severity and "busiest hour" don't fight over the same visual channel.
+function vBarChart(hourAvgs, max, peakHour, hourVehicleEst) {
   return hourAvgs.map((v, h) => {
     if (v == null) return `<div class="bar" data-h="0"></div>`;
     const pct = max ? Math.round((v / max) * 100) : 0;
-    let cls = 'bar';
-    if (h === peakHour) cls += ' peak';
-    else if (pct > 50) cls += ' high';
-    else if (pct > 20) cls += ' med';
-    return `<div class="${cls}" data-h="${pct}" data-val="${String(h).padStart(2, '0')}:00 · ${v} congestion"></div>`;
+    const label = labelForScore(v);
+    let cls = 'bar ' + label;
+    if (h === peakHour) cls += ' is-peak-hour';
+    const est = hourVehicleEst[h];
+    const tip = `${String(h).padStart(2, '0')}:00 · ${label.toUpperCase()}` + (est != null ? ` · ~${est.toLocaleString()} vehicles` : '');
+    return `<div class="${cls}" data-h="${pct}" data-val="${esc(tip)}"></div>`;
   }).join('');
 }
 
@@ -2563,22 +2609,24 @@ function trendChartSvg(entries) {
   if (entries.length < 2) {
     return '<div class="src-empty">Need at least two readings to chart a trend.</div>';
   }
-  const W = 600, H = 140, padL = 8, padR = 44, padT = 12, padB = 20;
+  const W = 600, H = 140, padL = 8, padR = 70, padT = 12, padB = 20;
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const times = entries.map(e => e[2]);
   const tMin = times[0], tMax = times[times.length - 1];
   const x = t => padL + (tMax === tMin ? 0 : ((t - tMin) / (tMax - tMin)) * innerW);
   const y = v => padT + innerH - (v / 100) * innerH;
 
-  const points = entries.map(([label, v, t]) => [x(t), y(v), label, v]);
+  const points = entries.map(([label, v, t, densityLabel, vehicleEst]) => [x(t), y(v), label, densityLabel, vehicleEst]);
   const linePath = smoothPath(points);
   const areaPath = linePath + ` L${points[points.length - 1][0].toFixed(1)},${(padT + innerH).toFixed(1)}` +
     ` L${points[0][0].toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
   const last = points[points.length - 1];
+  const lastColor = severityColor(last[3]);
 
-  const hitCircles = points.map(p =>
-    `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="8" fill="transparent"><title>${esc(p[2])}: ${p[3]}</title></circle>`
-  ).join('');
+  const hitCircles = points.map(p => {
+    const tip = `${p[2]}: ${p[3].toUpperCase()}` + (p[4] != null ? ` · ~${p[4].toLocaleString()} vehicles` : '');
+    return `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="8" fill="transparent"><title>${esc(tip)}</title></circle>`;
+  }).join('');
 
   return `
     <svg viewBox="0 0 ${W} ${H}" class="trend-chart" preserveAspectRatio="none" style="width:100%; height:${H}px;">
@@ -2586,8 +2634,8 @@ function trendChartSvg(entries) {
       <line class="grid" x1="${padL}" y1="${padT.toFixed(1)}" x2="${W - padR}" y2="${padT.toFixed(1)}" />
       <path class="area" d="${areaPath}" />
       <path class="line" d="${linePath}" />
-      <circle class="dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" />
-      <text class="chart-label" x="${(last[0] + 8).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}">${last[3]}</text>
+      <circle class="dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" style="fill:${lastColor}" />
+      <text class="chart-label" x="${(last[0] + 8).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}" style="fill:${lastColor}">${esc(last[3].toUpperCase())}</text>
       ${hitCircles}
     </svg>`;
 }

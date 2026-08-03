@@ -65,7 +65,7 @@ async function analyzeScreenshot(env, imageBase64) {
             type: 'object',
             properties: {
               congestionScore: { type: 'integer' },
-              densityLabel: { type: 'string', enum: ['free', 'moderate', 'heavy'] },
+              densityLabel: { type: 'string', enum: ['free', 'moderate', 'heavy', 'severe'] },
               note: { type: 'string' }
             },
             required: ['congestionScore', 'densityLabel', 'note'],
@@ -80,11 +80,14 @@ async function analyzeScreenshot(env, imageBase64) {
           {
             type: 'text',
             text: 'This is a screenshot of Google Maps with the live traffic layer enabled, centered on a billboard location. ' +
-              'Read the colored road segments (green = free-flowing, yellow/orange = moderate, red = heavy congestion) visible ' +
-              'in roughly a 500m radius around the center of the image. Estimate an overall congestion score from 0 (completely ' +
-              'free-flowing) to 100 (gridlocked), pick the closest density label, and write one short sentence describing what ' +
-              'you see (which roads are congested, if any). If no colored traffic data is visible at all, use congestionScore 0, ' +
-              'densityLabel "free", and say so in the note.'
+              "Read the colored road segments in roughly a 500m radius around the center of the image, using Google's own " +
+              'traffic-layer legend: green = free-flowing (roughly 50mph+, no delay), orange = medium traffic (roughly ' +
+              '25-50mph), red = heavy delays (under 25mph), dark red = extremely slow or stationary (often an incident). ' +
+              'Estimate an overall congestion score from 0 (completely free-flowing, all green) to 100 (gridlocked, dark red ' +
+              'throughout), pick the closest density label — "free" for green, "moderate" for orange, "heavy" for red, ' +
+              '"severe" for dark red — and write one short sentence describing what you see (which roads are congested, ' +
+              'and which color dominates). If no colored traffic data is visible at all, use congestionScore 0, densityLabel ' +
+              '"free", and say so in the note.'
           }
         ]
       }]
