@@ -1137,7 +1137,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.13</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.14</span></a>
   <div class="top-actions">
     <button class="icon-btn" id="trafficPill" title="Live traffic layer" aria-label="Toggle live traffic layer" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1737,16 +1737,6 @@ function selectBillboard(id) {
            alt="${escapeHtml(b.title)}" />
     </div>` : '';
 
-  // Nothing at all? Show a "no verified data" note in place of the specs
-  const nothingVerified = !trafficVal && !audienceVal;
-  const noDataNote = nothingVerified ? `
-    <div class="section" style="text-align:center; padding:24px 20px;">
-      <div style="color:var(--muted); font-size:12px; line-height:1.6;">
-        <b style="color:var(--text);">No verified data yet</b><br/>
-        The owner hasn't added Google-verified or survey-backed data for this listing.
-      </div>
-    </div>` : '';
-
   document.getElementById('detail').innerHTML = `
   <div class="detail-body">
     <button class="drawer-close" onclick="closeDetail()" aria-label="Close details">✕</button>
@@ -1800,8 +1790,6 @@ function selectBillboard(id) {
     ${audienceSection}
 
     <div id="aiTrafficSection"></div>
-
-    ${noDataNote}
 
     <div class="price-row">
       <div>
@@ -1909,44 +1897,147 @@ function severityColor(score) {
   return `color-mix(in srgb, var(--red) ${100 - black}%, black ${black}%)`;
 }
 
-// Fills every hour bucket with a value, even ones we haven't sampled yet, so
-// the Peak Hours bar chart shows one continuous build-up-to-peak shape
-// instead of scattered bars with gaps. Each real hour's influence decays
-// with distance (roughly halving every ~2h) rather than a straight-line
+// 30-minute buckets instead of hourly — peak hours get sampled every 15
+// minutes now (see worker/src/index.js), and hourly bucketing was throwing
+// most of that resolution away by averaging up to 4 real readings into one
+// number. More, thinner bars, but each one is closer to what was actually
+// measured.
+const SLOTS_PER_DAY = 48;
+const SLOT_MINUTES = 1440 / SLOTS_PER_DAY;
+function slotOf(t) {
+  const d = new Date(t);
+  return Math.floor((d.getHours() * 60 + d.getMinutes()) / SLOT_MINUTES);
+}
+function slotLabel(slot) {
+  const totalMin = slot * SLOT_MINUTES;
+  return String(Math.floor(totalMin / 60)).padStart(2, '0') + ':' + String(totalMin % 60).padStart(2, '0');
+}
+
+// Fills every slot with a value, even ones we haven't sampled yet, so the
+// Peak Hours bar chart shows one continuous build-up-to-peak shape instead
+// of scattered bars with gaps. Each real slot's influence decays with
+// distance (roughly halving every ~2h) rather than a straight-line
 // interpolation across the whole gap — a plain average between two elevated
 // readings 14 hours apart (say 6pm and 8am, wrapping through the night)
 // would otherwise plateau at "moderately busy" straight through 3am, which
 // isn't realistic. Past a few hours from any real sample the estimate sags
 // toward a low baseline (typically free-flowing) instead, since that's the
-// safer default absent evidence. Gets more textured as more real hours get
+// safer default absent evidence. Gets more textured as more real slots get
 // sampled — never fabricated outright, just decayed away from what's real.
-const HOUR_FILL_DECAY = 3;
-const HOUR_FILL_BASELINE = 15;
-function fillHourGaps(hourAvgs) {
-  const realHours = hourAvgs.map((v, h) => v != null ? h : null).filter(h => h != null);
-  if (!realHours.length) return hourAvgs.map(() => ({ value: null, real: false }));
-  return hourAvgs.map((v, h) => {
+const SLOT_FILL_DECAY = 3 * (60 / SLOT_MINUTES); // ~3 hours, in slots
+const SLOT_FILL_BASELINE = 15;
+function fillSlotGaps(slotAvgs) {
+  const n = slotAvgs.length;
+  const realSlots = slotAvgs.map((v, i) => v != null ? i : null).filter(i => i != null);
+  if (!realSlots.length) return slotAvgs.map(() => ({ value: null, real: false }));
+  return slotAvgs.map((v, i) => {
     if (v != null) return { value: v, real: true };
-    let before = null, after = null, beforeDist = 25, afterDist = 25;
-    for (const rh of realHours) {
-      const distBack = (h - rh + 24) % 24;  // rh is this many hours before h
-      const distFwd = (rh - h + 24) % 24;   // rh is this many hours after h
-      if (distBack > 0 && distBack < beforeDist) { beforeDist = distBack; before = rh; }
-      if (distFwd > 0 && distFwd < afterDist) { afterDist = distFwd; after = rh; }
+    let before = null, after = null, beforeDist = n + 1, afterDist = n + 1;
+    for (const ri of realSlots) {
+      const distBack = (i - ri + n) % n;  // ri is this many slots before i
+      const distFwd = (ri - i + n) % n;   // ri is this many slots after i
+      if (distBack > 0 && distBack < beforeDist) { beforeDist = distBack; before = ri; }
+      if (distFwd > 0 && distFwd < afterDist) { afterDist = distFwd; after = ri; }
     }
-    const wBefore = Math.exp(-beforeDist / HOUR_FILL_DECAY);
-    const wAfter = Math.exp(-afterDist / HOUR_FILL_DECAY);
+    let wBefore = Math.exp(-beforeDist / SLOT_FILL_DECAY);
+    let wAfter = Math.exp(-afterDist / SLOT_FILL_DECAY);
+    // Both weights independently approach 1 as a slot sits right next to a
+    // real anchor on each side — without normalizing, a slot wedged between
+    // two nearby anchors could overshoot past both of them instead of
+    // landing between them.
+    const wSum = wBefore + wAfter;
+    if (wSum > 1) { wBefore /= wSum; wAfter /= wSum; }
     const wBase = Math.max(0, 1 - wBefore - wAfter);
-    const value = wBefore * hourAvgs[before] + wAfter * hourAvgs[after] + wBase * HOUR_FILL_BASELINE;
+    const value = wBefore * slotAvgs[before] + wAfter * slotAvgs[after] + wBase * SLOT_FILL_BASELINE;
     return { value: Math.max(0, Math.min(100, Math.round(value))), real: false };
   });
+}
+
+// A billboard's ad exposure time isn't just impressions — slower traffic
+// means each vehicle spends longer within view. Estimated from the same
+// Google speed bands the vision prompt uses (worker/src/index.js): ~55mph at
+// score 0 down to ~1mph (near-stationary) at score 100, over an assumed
+// ~150m effective viewing distance. A heuristic like the vehicle-count
+// estimate, not a measurement — capped at 2 minutes since gridlock dwell
+// time isn't meaningfully "average."
+const DWELL_VIEW_DISTANCE_MILES = 0.093; // ~150m
+function scoreToMph(score) {
+  const v = Math.max(0, Math.min(100, score));
+  if (v <= 49) return 55 - (v / 49) * 30; // 55mph -> 25mph, matching Google's free/moderate bands
+  return Math.max(1, 24 - ((v - 50) / 50) * 23); // 24mph -> ~1mph, matching heavy/severe
+}
+function estimateDwellSeconds(score) {
+  const seconds = (DWELL_VIEW_DISTANCE_MILES / scoreToMph(score)) * 3600;
+  return Math.min(120, Math.round(seconds));
+}
+function fmtDwell(seconds) {
+  if (seconds < 60) return `~${seconds}s`;
+  return `~${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+// Longest run of consecutive slots (in the filled 48-slot day) reading heavy
+// or worse — not just when the peak starts, but how long it typically holds,
+// which matters a lot more for ad exposure than a single busiest instant.
+// Operates on the same real+estimated shape the bar chart shows.
+function estimatePeakDurationMinutes(filledValues) {
+  const n = filledValues.length;
+  const isPeak = filledValues.map(v => v != null && labelForScore(v) !== 'free');
+  if (!isPeak.some(Boolean)) return 0;
+  if (isPeak.every(Boolean)) return n * SLOT_MINUTES;
+  let best = 0, cur = 0;
+  for (let k = 0; k < n * 2; k++) { // twice around to catch a run wrapping past midnight
+    if (isPeak[k % n]) { cur++; best = Math.max(best, Math.min(cur, n)); }
+    else cur = 0;
+  }
+  return best * SLOT_MINUTES;
+}
+function fmtDuration(minutes) {
+  if (minutes < 60) return `~${minutes}min`;
+  const h = minutes / 60;
+  return `~${Number.isInteger(h) ? h : h.toFixed(1)}h`;
+}
+
+// Weekday vs. weekend average, straight from each reading's own timestamp —
+// no extra tracking needed. Only shown once we actually have readings from
+// both buckets, so it's never comparing one real day against nothing.
+function weekdayWeekendSplit(chrono) {
+  const weekday = [], weekend = [];
+  chrono.forEach(s => {
+    const day = new Date(s.capturedAt).getDay();
+    (day === 0 || day === 6 ? weekend : weekday).push(s.congestionScore);
+  });
+  if (!weekday.length || !weekend.length) return null;
+  const avg = arr => Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
+  return { weekdayScore: avg(weekday), weekendScore: avg(weekend) };
+}
+
+// Is this location trending busier or calmer over the collection period?
+// Compares the average of the first half of days sampled vs. the second
+// half. Needs at least 3 distinct days before saying anything — and even
+// then, only calls it if the shift clears a threshold, so normal day-to-day
+// noise doesn't get reported as a "trend."
+function trendDirection(chrono) {
+  const byDay = {};
+  chrono.forEach(s => {
+    const day = new Date(s.capturedAt).toISOString().slice(0, 10);
+    (byDay[day] = byDay[day] || []).push(s.congestionScore);
+  });
+  const days = Object.keys(byDay).sort();
+  if (days.length < 3) return null;
+  const dayAvgs = days.map(d => byDay[d].reduce((s, v) => s + v, 0) / byDay[d].length);
+  const half = Math.floor(dayAvgs.length / 2);
+  const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
+  const diff = avg(dayAvgs.slice(-half)) - avg(dayAvgs.slice(0, half));
+  if (diff > 8) return 'busier';
+  if (diff < -8) return 'calmer';
+  return null; // steady enough that it's not worth calling out
 }
 
 // Real congestion readings are sparse and swing hard between samples (free
 // at 2am, heavy at 8am, free again by 10) — connecting them directly makes
 // an otherwise-smooth spline look spiky. For gaps over an hour, this fills
 // in extra points blending straight-line interpolation between the two real
-// neighbors with the learned hour-of-day pattern (hourAvgs, itself built
+// neighbors with the learned time-of-day pattern (slotAvgs, itself built
 // from real data), so the fill reflects what that time of day usually looks
 // like rather than just a straight jump. Real readings are always kept
 // exactly as collected and flagged `real: true`; only synthetic in-between
@@ -1955,7 +2046,7 @@ function fillHourGaps(hourAvgs) {
 // accurate over time as real data fills in, never less.
 const TREND_GAP_MS = 60 * 60 * 1000;
 const TREND_MAX_FILL_PER_GAP = 6;
-function buildSmoothSeries(chrono, hourAvgs) {
+function buildSmoothSeries(chrono, slotAvgs) {
   const series = [];
   for (let i = 0; i < chrono.length; i++) {
     series.push({ t: chrono[i].capturedAt, score: chrono[i].congestionScore, real: true });
@@ -1968,7 +2059,7 @@ function buildSmoothSeries(chrono, hourAvgs) {
     for (let s = 1; s <= steps; s++) {
       const t = t0 + (gap * s) / (steps + 1);
       const linInterp = v0 + (v1 - v0) * (s / (steps + 1));
-      const typical = hourAvgs[new Date(t).getHours()];
+      const typical = slotAvgs[slotOf(t)];
       const blended = typical != null ? (linInterp + typical) / 2 : linInterp;
       series.push({ t, score: Math.max(0, Math.min(100, Math.round(blended))), real: false });
     }
@@ -1977,16 +2068,16 @@ function buildSmoothSeries(chrono, hourAvgs) {
 }
 
 // Rough vehicle-count estimate: redistributes the billboard's stated daily
-// traffic across the hours we actually have AI congestion readings for,
-// weighted by relative congestion (a +5 floor keeps free-flowing hours from
+// traffic across the slots we actually have AI congestion readings for,
+// weighted by relative congestion (a +5 floor keeps free-flowing slots from
 // being estimated at literally zero cars). This is a heuristic for "roughly
 // how busy was it then," not a measurement — always shown with a "~".
-function estimateHourlyVehicles(hourAvgs, dailyTraffic) {
-  if (!dailyTraffic) return hourAvgs.map(() => null);
-  const weights = hourAvgs.map(v => v == null ? 0 : v + 5);
+function estimateSlotVehicles(slotAvgs, dailyTraffic) {
+  if (!dailyTraffic) return slotAvgs.map(() => null);
+  const weights = slotAvgs.map(v => v == null ? 0 : v + 5);
   const total = weights.reduce((s, w) => s + w, 0);
-  if (!total) return hourAvgs.map(() => null);
-  return hourAvgs.map((v, h) => v == null ? null : Math.round(dailyTraffic * weights[h] / total));
+  if (!total) return slotAvgs.map(() => null);
+  return slotAvgs.map((v, i) => v == null ? null : Math.round(dailyTraffic * weights[i] / total));
 }
 
 function renderAiTrafficSection(b, data) {
@@ -2009,30 +2100,33 @@ function renderAiTrafficSection(b, data) {
   const scores = chrono.map(s => s.congestionScore);
   const typicalScore = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
 
-  const hourBuckets = Array.from({ length: 24 }, () => []);
-  chrono.forEach(s => hourBuckets[new Date(s.capturedAt).getHours()].push(s.congestionScore));
-  const hourAvgs = hourBuckets.map(vals => vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null);
+  const slotBuckets = Array.from({ length: SLOTS_PER_DAY }, () => []);
+  chrono.forEach(s => slotBuckets[slotOf(s.capturedAt)].push(s.congestionScore));
+  const slotAvgs = slotBuckets.map(vals => vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null);
   // The full-day shape (build-up into each peak, not just isolated bars for
-  // the hours we happen to have samples for) — see fillHourGaps().
-  const filledHours = fillHourGaps(hourAvgs);
-  const filledValues = filledHours.map(x => x.value);
-  const maxHourAvg = Math.max(1, ...filledValues.filter(v => v != null));
-  const peakHour = filledValues.reduce((best, v, h) => (v != null && (best == null || v > filledValues[best])) ? h : best, null);
+  // the slots we happen to have samples for) — see fillSlotGaps().
+  const filledSlots = fillSlotGaps(slotAvgs);
+  const filledValues = filledSlots.map(x => x.value);
+  const maxSlotAvg = Math.max(1, ...filledValues.filter(v => v != null));
+  const peakSlot = filledValues.reduce((best, v, i) => (v != null && (best == null || v > filledValues[best])) ? i : best, null);
 
   const dailyTraffic = (b.dataSources && b.dataSources.manual && b.dataSources.manual.enabled) ? b.dataSources.manual.traffic : null;
-  const hourVehicleEst = estimateHourlyVehicles(filledValues, dailyTraffic);
+  const slotVehicleEst = estimateSlotVehicles(filledValues, dailyTraffic);
+  const avgDwellSeconds = estimateDwellSeconds(typicalScore);
 
   // Full history, not a rolling window — as more gets collected the chart
   // just grows with it, since a POC with only days of data shouldn't act
   // like it's throwing anything away. Gaps between real readings are
-  // blended toward the full (gap-filled) hour-of-day shape above, so the
+  // blended toward the full (gap-filled) time-of-day shape above, so the
   // two charts tell the same story.
   const trendEntries = buildSmoothSeries(chrono, filledValues).map(pt => {
-    const hour = new Date(pt.t).getHours();
-    return [fmtPointLabel(pt.t), pt.score, pt.t, hourVehicleEst[hour], pt.real];
+    return [fmtPointLabel(pt.t), pt.score, pt.t, slotVehicleEst[slotOf(pt.t)], pt.real];
   });
   const trendDays = new Set(chrono.map(s => new Date(s.capturedAt).toISOString().slice(0, 10))).size;
   const trendLabel = `${trendDays} day${trendDays === 1 ? '' : 's'} of history, ${chrono.length} reading${chrono.length === 1 ? '' : 's'}`;
+  const trendDir = trendDirection(chrono);
+  const peakDurationMin = estimatePeakDurationMinutes(filledValues);
+  const weekdayWeekend = weekdayWeekendSplit(chrono);
 
   return `
     <div class="section">
@@ -2040,16 +2134,23 @@ function renderAiTrafficSection(b, data) {
       <div class="kpi-grid">
         <div class="kpi-tile"><div class="kpi-label">Latest conditions</div><div class="kpi-value" style="font-size:17px; color:${severityColor(latest.congestionScore)}">${esc(labelForScore(latest.congestionScore).toUpperCase())}</div></div>
         <div class="kpi-tile"><div class="kpi-label">Typical level</div><div class="kpi-value" style="font-size:17px; color:${severityColor(typicalScore)}">${esc(labelForScore(typicalScore).toUpperCase())}</div></div>
-        <div class="kpi-tile"><div class="kpi-label">Peak hour</div><div class="kpi-value">${peakHour != null ? String(peakHour).padStart(2, '0') + ':00' : '—'}</div></div>
+        <div class="kpi-tile"><div class="kpi-label">Peak time</div><div class="kpi-value">${peakSlot != null ? slotLabel(peakSlot) : '—'}</div></div>
+        <div class="kpi-tile" title="Estimated from typical congestion over an assumed ~150m viewing distance — a heuristic, not a measurement."><div class="kpi-label">Avg. dwell time</div><div class="kpi-value">${fmtDwell(avgDwellSeconds)}</div></div>
       </div>
-      <h3 style="margin-top:4px;">Congestion Trend <small>${trendLabel}</small></h3>
+      <h3 style="margin-top:4px;">Congestion Trend <small>${trendLabel}${trendDir ? ' · trending ' + trendDir : ''}</small></h3>
       ${trendChartSvg(trendEntries)}
-      <h3 style="margin-top:16px;">Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
-      <div class="chart ai-chart">${vBarChart(filledHours, maxHourAvg, hourVehicleEst)}</div>
+      <h3 style="margin-top:16px;">Peak Hours <small>${peakSlot != null ? 'busiest around ' + slotLabel(peakSlot) + (peakDurationMin > 0 ? ', typically for ' + fmtDuration(peakDurationMin) : '') : ''}</small></h3>
+      <div class="chart ai-chart">${vBarChart(filledSlots, maxSlotAvg, slotVehicleEst)}</div>
       <div class="chart-axis">
         <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
       </div>
       <div class="severity-scale"><span>Free</span><div class="scale-track"></div><span>Severe</span></div>
+      ${weekdayWeekend ? `
+      <h3 style="margin-top:16px;">Weekly Pattern</h3>
+      <div class="kpi-grid">
+        <div class="kpi-tile"><div class="kpi-label">Weekdays</div><div class="kpi-value" style="font-size:17px; color:${severityColor(weekdayWeekend.weekdayScore)}">${esc(labelForScore(weekdayWeekend.weekdayScore).toUpperCase())}</div></div>
+        <div class="kpi-tile"><div class="kpi-label">Weekends</div><div class="kpi-value" style="font-size:17px; color:${severityColor(weekdayWeekend.weekendScore)}">${esc(labelForScore(weekdayWeekend.weekendScore).toUpperCase())}</div></div>
+      </div>` : ''}
     </div>
     ${aiInsightsHtml}`;
 }
@@ -2057,22 +2158,22 @@ function renderAiTrafficSection(b, data) {
 // .chart/.bar bars colored by a continuous green-to-red climb (see
 // severityColor()) instead of a relative-to-max gradient of one accent hue
 // — this is what actually shows the pattern across the day, not just bar
-// height. `hours` is the gap-filled 24-entry array from fillHourGaps(): every
-// hour gets a bar so the build-up into each peak reads as one continuous
-// shape, but hours without a real sample render at reduced opacity and their
-// tooltip says so — the chart is honest about which hours are measured vs.
-// interpolated, even though it always shows all 24. "Free" doesn't get
-// called out by name in the tooltip since the color already says so; only
-// heavy/severe do.
-function vBarChart(hours, max, hourVehicleEst) {
-  return hours.map(({ value: v, real }, h) => {
+// height. `slots` is the gap-filled 48-entry (30-min) array from
+// fillSlotGaps(): every slot gets a bar so the build-up into each peak reads
+// as one continuous shape, but slots without a real sample render at
+// reduced opacity and their tooltip says so — the chart is honest about
+// which slots are measured vs. interpolated, even though it always shows
+// all 48. "Free" doesn't get called out by name in the tooltip since the
+// color already says so; only heavy/severe do.
+function vBarChart(slots, max, slotVehicleEst) {
+  return slots.map(({ value: v, real }, i) => {
     if (v == null) return `<div class="bar" data-h="0"></div>`;
     const pct = max ? Math.round((v / max) * 100) : 0;
     const label = labelForScore(v);
     let cls = 'bar severity';
     if (!real) cls += ' estimated';
-    const est = hourVehicleEst[h];
-    const tip = `${String(h).padStart(2, '0')}:00` +
+    const est = slotVehicleEst[i];
+    const tip = slotLabel(i) +
       (label !== 'free' ? ` · ${label.toUpperCase()}` : '') +
       (est != null ? ` · ~${est.toLocaleString()} vehicles` : '') +
       (real ? '' : ' (estimated)');
