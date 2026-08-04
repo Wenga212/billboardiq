@@ -3,12 +3,15 @@ main = "src/index.js"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Fires hourly and captures every tick (24 samples/day/billboard) for denser
-# statistics. Only captures + queues screenshots (pending_snapshots) — no
-# Claude calls happen in this Worker for the POC, so no paid API usage is
+# Fires every 15 minutes; the handler self-filters per billboard: during
+# that billboard's own peak hours (or a default school/office pattern if it
+# hasn't declared any) it captures on every tick — 4 samples/hour — and
+# otherwise just once/hour (only the :00 tick), matching the old baseline
+# cadence off-peak. Only captures + queues screenshots (pending_snapshots) —
+# no Claude calls happen in this Worker for the POC, so no paid API usage is
 # incurred by this cron. Analysis of pending_snapshots happens interactively.
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/15 * * * *"]
 
 [[d1_databases]]
 binding = "DB"

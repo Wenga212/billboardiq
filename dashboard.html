@@ -17,16 +17,16 @@
     --bg:#e9eae4; --panel:#f5f6f1; --panel-2:#e0e2d9; --line:#cdd1c4;
     --text:#171a17; --muted:#67706a;
     --accent:#cfec2f; --accent-ink:#151810; --accent-text:#5f7a00;
-    --green:#188544; --amber:#a3650a; --red:#cc3b3b; --blue:#1e5db8; --severe:#7a1220;
-    --green-bg:rgba(24,133,68,.12); --amber-bg:rgba(163,101,10,.14); --red-bg:rgba(204,59,59,.12); --blue-bg:rgba(30,93,184,.12); --severe-bg:rgba(122,18,32,.12);
+    --green:#188544; --amber:#a3650a; --red:#cc3b3b; --blue:#1e5db8;
+    --green-bg:rgba(24,133,68,.12); --amber-bg:rgba(163,101,10,.14); --red-bg:rgba(204,59,59,.12); --blue-bg:rgba(30,93,184,.12);
     --overlay:rgba(245,246,241,.92); --shadow:0 8px 30px rgba(20,24,18,.18);
   }
   [data-theme="dark"] {
     --bg:#0b0d0c; --panel:#121514; --panel-2:#181b1a; --line:#242827;
     --text:#ecebe4; --muted:#6b7270;
     --accent:#d4ff3a; --accent-ink:#0b0d0c; --accent-text:#d4ff3a;
-    --green:#4ade80; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa; --severe:#b91c2f;
-    --green-bg:rgba(74,222,128,.12); --amber-bg:rgba(251,191,36,.12); --red-bg:rgba(248,113,113,.12); --blue-bg:rgba(96,165,250,.12); --severe-bg:rgba(185,28,47,.15);
+    --green:#4ade80; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa;
+    --green-bg:rgba(74,222,128,.12); --amber-bg:rgba(251,191,36,.12); --red-bg:rgba(248,113,113,.12); --blue-bg:rgba(96,165,250,.12);
     --overlay:rgba(11,13,12,.92); --shadow:0 8px 30px rgba(0,0,0,.5);
   }
   [data-theme="light"] {
@@ -197,18 +197,26 @@
     min-height: 4px; height: 4px;
     transition: height .5s cubic-bezier(.22,.9,.35,1), background .2s;
   }
-  /* Real-world severity tiers — literal green/orange/red/dark-red, matching
-     Google's own traffic-layer legend, rather than a relative-to-max
-     gradient of one hue. */
-  .bar.free { background: var(--green); }
-  .bar.moderate { background: var(--amber); }
-  .bar.heavy { background: var(--red); }
-  .bar.severe { background: var(--severe); }
-  .bar.free:hover, .bar.moderate:hover, .bar.heavy:hover, .bar.severe:hover,
-  .bar.free.tap-active, .bar.moderate.tap-active, .bar.heavy.tap-active, .bar.severe.tap-active {
-    filter: brightness(1.2);
-  }
+  /* Real-world congestion severity: color is set per-bar inline
+     (severityColor() below) as a continuous green-to-red climb, not a
+     fixed class — see that function for why. This class just carries the
+     hover/tap affordance. */
+  .bar.severity:hover, .bar.severity.tap-active { filter: brightness(1.25); }
   .bar.is-peak-hour { box-shadow: 0 0 0 2px var(--text) inset; }
+
+  .severity-scale {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: .5px;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .severity-scale .scale-track {
+    flex: 1; height: 6px; border-radius: 3px;
+    background: linear-gradient(to right,
+      var(--green),
+      color-mix(in srgb, var(--green) 55%, black 45%) 49%,
+      var(--red) 50%,
+      color-mix(in srgb, var(--red) 45%, black 55%) 100%);
+  }
   .bar:hover::after, .bar.tap-active::after {
     content: attr(data-val); position: absolute; bottom: 100%; left: 50%;
     transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line);
@@ -2471,19 +2479,29 @@ function aiInsightsSectionHTML(data) {
 }
 
 // Google's own traffic-layer legend (green/orange/red/dark-red, tied to
-// speed relative to free-flow) is the source of truth for these bands —
-// see analyzeScreenshot()'s prompt in worker/src/index.js and
-// functions/api/[[route]].js. Kept here too so hour-bucket averages (which
-// don't have a single reading's own densityLabel) can be classified
-// consistently.
+// speed relative to free-flow) is where these bands come from — see
+// analyzeScreenshot()'s prompt in worker/src/index.js and
+// functions/api/[[route]].js. There's no "moderate" tag: a flat orange
+// tier reads as a muddy brown once it's actually in the UI, so congestion
+// is drawn as a continuous climb instead — green as the baseline,
+// darkening as it climbs, then a hue switch straight to red (never
+// blending green+red directly, which is what produces the brown) getting
+// darker again toward severe. labelForScore() still gives discrete words
+// for tooltips/KPI tiles; severityColor() is the continuous version for
+// anything drawn (bars, the trend line, dots).
 function labelForScore(v) {
   if (v >= 85) return 'severe';
-  if (v >= 55) return 'heavy';
-  if (v >= 25) return 'moderate';
+  if (v >= 50) return 'heavy';
   return 'free';
 }
-function severityColor(label) {
-  return { free: 'var(--green)', moderate: 'var(--amber)', heavy: 'var(--red)', severe: 'var(--severe)' }[label] || 'var(--muted)';
+function severityColor(score) {
+  const v = Math.max(0, Math.min(100, score));
+  if (v < 50) {
+    const black = Math.round((v / 49) * 45);
+    return `color-mix(in srgb, var(--green) ${100 - black}%, black ${black}%)`;
+  }
+  const black = Math.round(((v - 50) / 50) * 55);
+  return `color-mix(in srgb, var(--red) ${100 - black}%, black ${black}%)`;
 }
 
 // Rough vehicle-count estimate: redistributes the billboard's stated daily
@@ -2514,9 +2532,8 @@ function renderTrafficBody(b, data) {
   // Oldest-first for the trend chart and hour-of-day bucketing.
   const chrono = [...snapshots].sort((a, c) => a.capturedAt - c.capturedAt);
   const latest = chrono[chrono.length - 1];
-  const labelCounts = {};
-  chrono.forEach(s => { labelCounts[s.densityLabel] = (labelCounts[s.densityLabel] || 0) + 1; });
-  const typicalLabel = Object.entries(labelCounts).sort((a, c) => c[1] - a[1])[0][0];
+  const scores = chrono.map(s => s.congestionScore);
+  const typicalScore = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
   const days = new Set(chrono.map(s => new Date(s.capturedAt).toISOString().slice(0, 10))).size;
 
   const hourBuckets = Array.from({ length: 24 }, () => []);
@@ -2534,7 +2551,7 @@ function renderTrafficBody(b, data) {
   const recent = usingFallback ? chrono.slice(-24) : within24h;
   const trendEntries = recent.map(s => {
     const hour = new Date(s.capturedAt).getHours();
-    return [fmtPointLabel(s.capturedAt), s.congestionScore, s.capturedAt, s.densityLabel, hourVehicleEst[hour]];
+    return [fmtPointLabel(s.capturedAt), s.congestionScore, s.capturedAt, hourVehicleEst[hour]];
   });
   const trendLabel = usingFallback
     ? `last ${recent.length} reading${recent.length === 1 ? '' : 's'}`
@@ -2543,8 +2560,8 @@ function renderTrafficBody(b, data) {
   return `
     <h3 style="margin-bottom:12px;">${esc(b.title)} <small style="font-family:'DM Sans',sans-serif; text-transform:none; letter-spacing:0; color:var(--muted); font-size:12px;">${esc(b.area)}</small></h3>
     <div class="kpi-grid">
-      <div class="kpi-tile"><div class="kpi-label">Latest conditions</div><div class="kpi-value" style="font-size:17px; color:${severityColor(latest.densityLabel)}">${esc(latest.densityLabel.toUpperCase())}</div></div>
-      <div class="kpi-tile"><div class="kpi-label">Typical level</div><div class="kpi-value" style="font-size:17px; color:${severityColor(typicalLabel)}">${esc(typicalLabel.toUpperCase())}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Latest conditions</div><div class="kpi-value" style="font-size:17px; color:${severityColor(latest.congestionScore)}">${esc(labelForScore(latest.congestionScore).toUpperCase())}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Typical level</div><div class="kpi-value" style="font-size:17px; color:${severityColor(typicalScore)}">${esc(labelForScore(typicalScore).toUpperCase())}</div></div>
       <div class="kpi-tile"><div class="kpi-label">Days collected</div><div class="kpi-value">${days}</div></div>
     </div>
     <div class="ov-section">
@@ -2557,24 +2574,26 @@ function renderTrafficBody(b, data) {
       <div class="chart-axis">
         <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
       </div>
+      <div class="severity-scale"><span>Free</span><div class="scale-track"></div><span>Severe</span></div>
     </div>
     ${aiInsightsSectionHTML(data)}`;
 }
 
-// .chart/.bar bars colored by absolute severity tier (matching Google's own
-// traffic-layer legend — see labelForScore()) instead of a relative-to-max
-// gradient. The peak hour gets an outline rather than its own color, so
-// severity and "busiest hour" don't fight over the same visual channel.
+// .chart/.bar bars colored by a continuous green-to-red climb (see
+// severityColor()) instead of a relative-to-max gradient — this is what
+// actually shows the pattern across the day, not just bar height. The peak
+// hour gets an outline rather than its own color, so "busiest hour" and
+// "how bad was it" don't fight over the same visual channel.
 function vBarChart(hourAvgs, max, peakHour, hourVehicleEst) {
   return hourAvgs.map((v, h) => {
     if (v == null) return `<div class="bar" data-h="0"></div>`;
     const pct = max ? Math.round((v / max) * 100) : 0;
     const label = labelForScore(v);
-    let cls = 'bar ' + label;
+    let cls = 'bar severity';
     if (h === peakHour) cls += ' is-peak-hour';
     const est = hourVehicleEst[h];
     const tip = `${String(h).padStart(2, '0')}:00 · ${label.toUpperCase()}` + (est != null ? ` · ~${est.toLocaleString()} vehicles` : '');
-    return `<div class="${cls}" data-h="${pct}" data-val="${esc(tip)}"></div>`;
+    return `<div class="${cls}" data-h="${pct}" data-val="${esc(tip)}" style="background:${severityColor(v)}"></div>`;
   }).join('');
 }
 
@@ -2616,26 +2635,32 @@ function trendChartSvg(entries) {
   const x = t => padL + (tMax === tMin ? 0 : ((t - tMin) / (tMax - tMin)) * innerW);
   const y = v => padT + innerH - (v / 100) * innerH;
 
-  const points = entries.map(([label, v, t, densityLabel, vehicleEst]) => [x(t), y(v), label, densityLabel, vehicleEst]);
+  const points = entries.map(([label, v, t, vehicleEst]) => [x(t), y(v), label, v, vehicleEst]);
   const linePath = smoothPath(points);
   const areaPath = linePath + ` L${points[points.length - 1][0].toFixed(1)},${(padT + innerH).toFixed(1)}` +
     ` L${points[0][0].toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
   const last = points[points.length - 1];
   const lastColor = severityColor(last[3]);
 
+  // The line itself is the "pattern" — color it with a gradient along its
+  // own length (one stop per real reading) instead of a single flat hue.
+  const gradId = 'tg' + Math.random().toString(36).slice(2, 9);
+  const stops = points.map(p => `<stop offset="${(p[0] / W).toFixed(3)}" style="stop-color:${severityColor(p[3])}" />`).join('');
+
   const hitCircles = points.map(p => {
-    const tip = `${p[2]}: ${p[3].toUpperCase()}` + (p[4] != null ? ` · ~${p[4].toLocaleString()} vehicles` : '');
+    const tip = `${p[2]}: ${labelForScore(p[3]).toUpperCase()}` + (p[4] != null ? ` · ~${p[4].toLocaleString()} vehicles` : '');
     return `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="8" fill="transparent"><title>${esc(tip)}</title></circle>`;
   }).join('');
 
   return `
     <svg viewBox="0 0 ${W} ${H}" class="trend-chart" preserveAspectRatio="none" style="width:100%; height:${H}px;">
+      <defs><linearGradient id="${gradId}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${W}" y2="0">${stops}</linearGradient></defs>
       <line class="grid" x1="${padL}" y1="${(padT + innerH).toFixed(1)}" x2="${W - padR}" y2="${(padT + innerH).toFixed(1)}" />
       <line class="grid" x1="${padL}" y1="${padT.toFixed(1)}" x2="${W - padR}" y2="${padT.toFixed(1)}" />
-      <path class="area" d="${areaPath}" />
-      <path class="line" d="${linePath}" />
+      <path class="area" d="${areaPath}" style="fill:url(#${gradId})" />
+      <path class="line" d="${linePath}" style="stroke:url(#${gradId})" />
       <circle class="dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" style="fill:${lastColor}" />
-      <text class="chart-label" x="${(last[0] + 8).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}" style="fill:${lastColor}">${esc(last[3].toUpperCase())}</text>
+      <text class="chart-label" x="${(last[0] + 8).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}" style="fill:${lastColor}">${esc(labelForScore(last[3]).toUpperCase())}</text>
       ${hitCircles}
     </svg>`;
 }

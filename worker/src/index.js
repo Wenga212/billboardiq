@@ -13,11 +13,12 @@
    commercial launch. Re-wire them into scheduled() (and set
    ANTHROPIC_API_KEY) at that point; no other changes should be needed.
 
-   Fires hourly and captures on every tick (24 samples/day/billboard) —
-   widened from the original 6-slot Colombo sampling schedule because the
-   POC didn't have enough snapshots yet to build reliable congestion
-   statistics. This quadruples Browser Rendering usage vs. the old 6x/day
-   cadence; revisit if that becomes a cost/quota concern.
+   Fires every 15 minutes. Each billboard is sampled 4x/hour (every tick)
+   during its own declared peak hours — or a default school/office pattern
+   (8, 9, 14, 17, 18) if it hasn't declared any — and just once/hour
+   otherwise, matching the old baseline cadence off-peak. This is denser
+   sampling exactly where the traffic actually varies hour-to-hour, without
+   quadrupling Browser Rendering usage across the whole day.
    ================================================================ */
 
 import puppeteer from '@cloudflare/puppeteer';
@@ -29,6 +30,14 @@ const INSIGHT_MIN_NEW_SNAPSHOTS = 20;
 const PENDING_RETENTION_DAYS = 7; // safety net if pending_snapshots isn't processed for a while
 const MAX_CAPTURE_ATTEMPTS = 3; // Google's bot-detection/consent wall blocks ~1 in 5 captures at 24x/day/billboard
 const CAPTURE_RETRY_DELAY_MS = 1500;
+const COLOMBO_OFFSET_MINUTES = 5 * 60 + 30;
+const DEFAULT_PEAK_HOURS = [8, 9, 14, 17, 18]; // school/office commute pattern, used when a billboard hasn't declared its own
+
+function colomboLocalParts(date) {
+  const utcMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
+  const localMinutes = (utcMinutes + COLOMBO_OFFSET_MINUTES) % (24 * 60);
+  return { hour: Math.floor(localMinutes / 60), minute: localMinutes % 60 };
+}
 
 function shortId() {
   const bytes = crypto.getRandomValues(new Uint8Array(4));
@@ -65,7 +74,7 @@ async function analyzeScreenshot(env, imageBase64) {
             type: 'object',
             properties: {
               congestionScore: { type: 'integer' },
-              densityLabel: { type: 'string', enum: ['free', 'moderate', 'heavy', 'severe'] },
+              densityLabel: { type: 'string', enum: ['free', 'heavy', 'severe'] },
               note: { type: 'string' }
             },
             required: ['congestionScore', 'densityLabel', 'note'],
@@ -84,10 +93,11 @@ async function analyzeScreenshot(env, imageBase64) {
               'traffic-layer legend: green = free-flowing (roughly 50mph+, no delay), orange = medium traffic (roughly ' +
               '25-50mph), red = heavy delays (under 25mph), dark red = extremely slow or stationary (often an incident). ' +
               'Estimate an overall congestion score from 0 (completely free-flowing, all green) to 100 (gridlocked, dark red ' +
-              'throughout), pick the closest density label — "free" for green, "moderate" for orange, "heavy" for red, ' +
-              '"severe" for dark red — and write one short sentence describing what you see (which roads are congested, ' +
-              'and which color dominates). If no colored traffic data is visible at all, use congestionScore 0, densityLabel ' +
-              '"free", and say so in the note.'
+              'throughout) — the more orange/red visible and the larger the affected area, the higher the score. Pick ' +
+              'densityLabel "free" if the score would be under 50, "heavy" if 50 or higher, or "severe" specifically for ' +
+              'extremely slow/stationary dark-red conditions (typically 85+). Write one short sentence describing what you ' +
+              'see (which roads are congested, and which color dominates). If no colored traffic data is visible at all, ' +
+              'use congestionScore 0, densityLabel "free", and say so in the note.'
           }
         ]
       }]
@@ -274,13 +284,26 @@ export default {
       .bind(Date.now() - PENDING_RETENTION_DAYS * 86400000)
       .run();
 
+    const { hour, minute } = colomboLocalParts(new Date(event.scheduledTime || Date.now()));
+
     const rows = await env.DB.prepare(
-      "SELECT id, lat, lng FROM billboards WHERE approval_state='approved'"
+      "SELECT id, lat, lng, peak_hours FROM billboards WHERE approval_state='approved'"
     ).all();
     const billboards = rows.results || [];
     if (!billboards.length) return;
 
-    await runBatch(billboards, MAX_CONCURRENT_BROWSERS, b => captureAndQueue(env, b));
+    // Peak hours: capture on every 15-min tick. Off-peak: only the :00 tick,
+    // so non-peak sampling stays at the old 1x/hour baseline instead of
+    // quadrupling everywhere.
+    const due = billboards.filter(b => {
+      let peak;
+      try { peak = JSON.parse(b.peak_hours || '[]'); } catch (e) { peak = []; }
+      if (!peak.length) peak = DEFAULT_PEAK_HOURS;
+      return peak.includes(hour) || minute === 0;
+    });
+    if (!due.length) return;
+
+    await runBatch(due, MAX_CONCURRENT_BROWSERS, b => captureAndQueue(env, b));
 
     // analyzeScreenshot()/refreshInsightIfDue() intentionally not called here — see file header.
   }

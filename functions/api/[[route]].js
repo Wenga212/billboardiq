@@ -204,7 +204,7 @@ async function analyzeScreenshot(env, imageBase64) {
             type: 'object',
             properties: {
               congestionScore: { type: 'integer' },
-              densityLabel: { type: 'string', enum: ['free', 'moderate', 'heavy', 'severe'] },
+              densityLabel: { type: 'string', enum: ['free', 'heavy', 'severe'] },
               note: { type: 'string' }
             },
             required: ['congestionScore', 'densityLabel', 'note'],
@@ -223,10 +223,11 @@ async function analyzeScreenshot(env, imageBase64) {
               'traffic-layer legend: green = free-flowing (roughly 50mph+, no delay), orange = medium traffic (roughly ' +
               '25-50mph), red = heavy delays (under 25mph), dark red = extremely slow or stationary (often an incident). ' +
               'Estimate an overall congestion score from 0 (completely free-flowing, all green) to 100 (gridlocked, dark red ' +
-              'throughout), pick the closest density label — "free" for green, "moderate" for orange, "heavy" for red, ' +
-              '"severe" for dark red — and write one short sentence describing what you see (which roads are congested, ' +
-              'and which color dominates). If no colored traffic data is visible at all, use congestionScore 0, densityLabel ' +
-              '"free", and say so in the note.'
+              'throughout) — the more orange/red visible and the larger the affected area, the higher the score. Pick ' +
+              'densityLabel "free" if the score would be under 50, "heavy" if 50 or higher, or "severe" specifically for ' +
+              'extremely slow/stationary dark-red conditions (typically 85+). Write one short sentence describing what you ' +
+              'see (which roads are congested, and which color dominates). If no colored traffic data is visible at all, ' +
+              'use congestionScore 0, densityLabel "free", and say so in the note.'
           }
         ]
       }]
