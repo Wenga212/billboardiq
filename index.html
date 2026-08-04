@@ -930,8 +930,8 @@
   .severity-scale .scale-track {
     flex: 1; height: 6px; border-radius: 3px;
     background: linear-gradient(to right,
-      var(--green),
-      color-mix(in srgb, var(--green) 55%, black 45%) 49%,
+      color-mix(in srgb, var(--accent) 75%, black 25%),
+      color-mix(in srgb, var(--accent) 50%, black 50%) 49%,
       var(--red) 50%,
       color-mix(in srgb, var(--red) 45%, black 55%) 100%);
   }
@@ -1894,8 +1894,13 @@ function labelForScore(v) {
 function severityColor(score) {
   const v = Math.max(0, Math.min(100, score));
   if (v < 50) {
-    const black = Math.round((v / 49) * 45);
-    return `color-mix(in srgb, var(--green) ${100 - black}%, black ${black}%)`;
+    // Same lime as the "+ Add Billboard" button (var(--accent)) — but that
+    // button uses it as a background with dark text on top; used bare as
+    // text/fill here it's too bright to read against the panel, so even the
+    // lightest shade carries a legibility floor (25% black), climbing to 50%
+    // toward the top of the free range.
+    const black = 25 + Math.round((v / 49) * 25);
+    return `color-mix(in srgb, var(--accent) ${100 - black}%, black ${black}%)`;
   }
   const black = Math.round(((v - 50) / 50) * 55);
   return `color-mix(in srgb, var(--red) ${100 - black}%, black ${black}%)`;
@@ -1943,17 +1948,15 @@ function renderAiTrafficSection(b, data) {
   const dailyTraffic = (b.dataSources && b.dataSources.manual && b.dataSources.manual.enabled) ? b.dataSources.manual.traffic : null;
   const hourVehicleEst = estimateHourlyVehicles(hourAvgs, dailyTraffic);
 
-  const dayMs = 24 * 60 * 60 * 1000;
-  const within24h = chrono.filter(s => s.capturedAt >= Date.now() - dayMs);
-  const usingFallback = within24h.length < 2;
-  const recent = usingFallback ? chrono.slice(-24) : within24h;
-  const trendEntries = recent.map(s => {
+  // Full history, not a rolling window — as more gets collected the chart
+  // just grows with it, since a POC with only days of data shouldn't act
+  // like it's throwing anything away.
+  const trendEntries = chrono.map(s => {
     const hour = new Date(s.capturedAt).getHours();
     return [fmtPointLabel(s.capturedAt), s.congestionScore, s.capturedAt, hourVehicleEst[hour]];
   });
-  const trendLabel = usingFallback
-    ? `last ${recent.length} reading${recent.length === 1 ? '' : 's'}`
-    : 'last 24h';
+  const trendDays = new Set(chrono.map(s => new Date(s.capturedAt).toISOString().slice(0, 10))).size;
+  const trendLabel = `${trendDays} day${trendDays === 1 ? '' : 's'} of history, ${chrono.length} reading${chrono.length === 1 ? '' : 's'}`;
 
   return `
     <div class="section">
@@ -2042,6 +2045,11 @@ function trendChartSvg(entries) {
     ` L${points[0][0].toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
   const last = points[points.length - 1];
   const lastColor = severityColor(last[3]);
+  const lastLabel = labelForScore(last[3]);
+  // "Free" is the expected baseline — the color already says so. Only
+  // heavy/severe get called out with a word, so the label doesn't just sit
+  // there reading "FREE" next to the line on a normal day.
+  const lastLabelText = lastLabel === 'free' ? '' : `<text class="chart-label" x="${(last[0] + 8).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}" style="fill:${lastColor}">${esc(lastLabel.toUpperCase())}</text>`;
 
   // The line itself is the "pattern" — color it with a gradient along its
   // own length (one stop per real reading) instead of a single flat hue, so
@@ -2062,7 +2070,7 @@ function trendChartSvg(entries) {
         <line class="hover-line" x1="0" y1="${padT}" x2="0" y2="${padT + innerH}" style="opacity:0" />
         <circle class="dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" style="fill:${lastColor}" />
         <circle class="hover-dot" r="4" style="opacity:0" />
-        <text class="chart-label" x="${(last[0] + 8).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}" style="fill:${lastColor}">${esc(labelForScore(last[3]).toUpperCase())}</text>
+        ${lastLabelText}
       </svg>
       <div class="chart-tooltip" style="opacity:0"></div>
     </div>`;
