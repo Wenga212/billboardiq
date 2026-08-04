@@ -197,27 +197,13 @@
     min-height: 4px; height: 4px;
     transition: height .5s cubic-bezier(.22,.9,.35,1), background .2s;
   }
-  /* Real-world congestion severity: color is set per-bar inline
-     (severityColor() below) as a continuous green-to-red climb, not a
-     fixed class — see that function for why. This class just carries the
-     hover/tap affordance. */
+  /* Congestion severity: color is set per-bar inline (severityColor()
+     below), shaded relative to this billboard's own observed range rather
+     than a fixed class — see that function for why. This class just
+     carries the hover/tap affordance. */
   .bar.severity:hover, .bar.severity.tap-active { filter: brightness(1.25); }
   .bar.severity.estimated { opacity: .5; }
   .bar.severity.estimated:hover, .bar.severity.estimated.tap-active { opacity: .75; }
-
-  .severity-scale {
-    display: flex; align-items: center; gap: 8px; margin-top: 10px;
-    font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: .5px;
-    color: var(--muted); text-transform: uppercase;
-  }
-  .severity-scale .scale-track {
-    flex: 1; height: 6px; border-radius: 3px;
-    background: linear-gradient(to right,
-      color-mix(in srgb, var(--accent) 90%, black 10%),
-      color-mix(in srgb, var(--accent) 75%, black 25%) 49%,
-      var(--red) 50%,
-      color-mix(in srgb, var(--red) 45%, black 55%) 100%);
-  }
   .bar:hover::after, .bar.tap-active::after {
     content: attr(data-val); position: absolute; bottom: 100%; left: 50%;
     transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line);
@@ -582,7 +568,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.14</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.15</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -2482,34 +2468,25 @@ function aiInsightsSectionHTML(data) {
 // Google's own traffic-layer legend (green/orange/red/dark-red, tied to
 // speed relative to free-flow) is where these bands come from — see
 // analyzeScreenshot()'s prompt in worker/src/index.js and
-// functions/api/[[route]].js. There's no "moderate" tag: a flat orange
-// tier reads as a muddy brown once it's actually in the UI, so congestion
-// is drawn as a continuous climb instead — green as the baseline,
-// darkening as it climbs, then a hue switch straight to red (never
-// blending green+red directly, which is what produces the brown) getting
-// darker again toward severe. labelForScore() still gives discrete words
-// for tooltips/KPI tiles; severityColor() is the continuous version for
-// anything drawn (bars, the trend line, dots).
+// functions/api/[[route]].js. labelForScore() still gives discrete words
+// (free/heavy/severe) for tooltips/KPI tiles — those stay absolute, so
+// "heavy" means the same thing on every listing. Color no longer does: no
+// more red, and no more fixed 0-100 bands. severityColor() shades a single
+// hue (the same lime as the "+ Add Billboard" button) relative to THIS
+// billboard's own observed range — its lowest reading is the baseline
+// (lightest), everything else darkens from there toward its own highest
+// reading. Shows the shape/rhythm of one location's traffic rather than
+// implying every listing shares the same notion of "bad."
 function labelForScore(v) {
   if (v >= 85) return 'severe';
   if (v >= 50) return 'heavy';
   return 'free';
 }
-function severityColor(score) {
-  const v = Math.max(0, Math.min(100, score));
-  if (v < 50) {
-    // Same lime as the "+ Add Billboard" button (var(--accent)) — light
-    // throughout the free range (a small 10-25% floor so it's not pure,
-    // unreadably-bright lime as text), not a march toward dark olive.
-    const black = 10 + Math.round((v / 49) * 15);
-    return `color-mix(in srgb, var(--accent) ${100 - black}%, black ${black}%)`;
-  }
-  // Same restrained darkening as the free range (10-25%) so var(--red) reads
-  // as the same red used everywhere else on the site (booked status, error
-  // banners) instead of getting noticeably muddier than its green
-  // counterpart — only truly severe (top of the range) darkens further.
-  const black = 10 + Math.round(((v - 50) / 50) * 20);
-  return `color-mix(in srgb, var(--red) ${100 - black}%, black ${black}%)`;
+function severityColor(score, min, max) {
+  const range = Math.max(1, max - min);
+  const t = Math.max(0, Math.min(1, (score - min) / range));
+  const black = Math.round(t * 45);
+  return `color-mix(in srgb, var(--accent) ${100 - black}%, black ${black}%)`;
 }
 
 // 30-minute buckets instead of hourly — peak hours get sampled every 15
@@ -2663,17 +2640,20 @@ function estimateSlotVehicles(slotAvgs, dailyTraffic) {
 
 // Real congestion readings are sparse and swing hard between samples (free
 // at 2am, heavy at 8am, free again by 10) — connecting them directly makes
-// an otherwise-smooth spline look spiky. For gaps over an hour, this fills
-// in extra points blending straight-line interpolation between the two real
-// neighbors with the learned time-of-day pattern (slotAvgs, itself built
-// from real data), so the fill reflects what that time of day usually looks
-// like rather than just a straight jump. Real readings are always kept
-// exactly as collected and flagged `real: true`; only synthetic in-between
-// points are estimated, and every render recomputes them fresh from
-// whatever's actually been collected by then — so the curve gets more
-// accurate over time as real data fills in, never less.
-const TREND_GAP_MS = 60 * 60 * 1000;
-const TREND_MAX_FILL_PER_GAP = 6;
+// an otherwise-smooth spline look spiky. For gaps over 30 minutes, this
+// fills in extra points (one per slot-width, so the curve is at least as
+// dense as the bar chart) leaning heavily on the bar chart's own per-slot
+// estimate (slotAvgs, from fillSlotGaps — already decay-blended from every
+// real anchor, not just these two neighbors) rather than a plain straight
+// line between just the two nearest readings, so the curve actually tells
+// the same story as the bars instead of a cruder approximation of it. Real
+// readings are always kept exactly as collected and flagged `real: true`;
+// only synthetic in-between points are estimated, and every render
+// recomputes them fresh from whatever's actually been collected by then —
+// so the curve gets more accurate over time as real data fills in, never
+// less.
+const TREND_GAP_MS = SLOT_MINUTES * 60 * 1000;
+const TREND_MAX_FILL_PER_GAP = 16;
 function buildSmoothSeries(chrono, slotAvgs) {
   const series = [];
   for (let i = 0; i < chrono.length; i++) {
@@ -2688,7 +2668,7 @@ function buildSmoothSeries(chrono, slotAvgs) {
       const t = t0 + (gap * s) / (steps + 1);
       const linInterp = v0 + (v1 - v0) * (s / (steps + 1));
       const typical = slotAvgs[slotOf(t)];
-      const blended = typical != null ? (linInterp + typical) / 2 : linInterp;
+      const blended = typical != null ? (linInterp * 0.25 + typical * 0.75) : linInterp;
       series.push({ t, score: Math.max(0, Math.min(100, Math.round(blended))), real: false });
     }
   }
@@ -2723,6 +2703,12 @@ function renderTrafficBody(b, data) {
   const filledValues = filledSlots.map(x => x.value);
   const maxSlotAvg = Math.max(1, ...filledValues.filter(v => v != null));
   const peakSlot = filledValues.reduce((best, v, i) => (v != null && (best == null || v > filledValues[best])) ? i : best, null);
+  // Color range shared by every chart/tile in this section — this
+  // billboard's own lowest and highest observed slot values, so shading is
+  // relative to its own pattern rather than a fixed global scale.
+  const validSlotValues = filledValues.filter(v => v != null);
+  const minScore = Math.min(...validSlotValues);
+  const maxScore = Math.max(...validSlotValues);
 
   const dailyTraffic = (b.dataSources && b.dataSources.manual && b.dataSources.manual.enabled) ? b.dataSources.manual.traffic : null;
   const slotVehicleEst = estimateSlotVehicles(filledValues, dailyTraffic);
@@ -2743,44 +2729,43 @@ function renderTrafficBody(b, data) {
   return `
     <h3 style="margin-bottom:12px;">${esc(b.title)} <small style="font-family:'DM Sans',sans-serif; text-transform:none; letter-spacing:0; color:var(--muted); font-size:12px;">${esc(b.area)}</small></h3>
     <div class="kpi-grid">
-      <div class="kpi-tile"><div class="kpi-label">Latest conditions</div><div class="kpi-value" style="font-size:17px; color:${severityColor(latest.congestionScore)}">${esc(labelForScore(latest.congestionScore).toUpperCase())}</div></div>
-      <div class="kpi-tile"><div class="kpi-label">Typical level</div><div class="kpi-value" style="font-size:17px; color:${severityColor(typicalScore)}">${esc(labelForScore(typicalScore).toUpperCase())}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Latest conditions</div><div class="kpi-value" style="font-size:17px; color:${severityColor(latest.congestionScore, minScore, maxScore)}">${esc(labelForScore(latest.congestionScore).toUpperCase())}</div></div>
+      <div class="kpi-tile"><div class="kpi-label">Typical level</div><div class="kpi-value" style="font-size:17px; color:${severityColor(typicalScore, minScore, maxScore)}">${esc(labelForScore(typicalScore).toUpperCase())}</div></div>
       <div class="kpi-tile"><div class="kpi-label">Days collected</div><div class="kpi-value">${days}</div></div>
       <div class="kpi-tile"><div class="kpi-label">Peak time</div><div class="kpi-value">${peakSlot != null ? slotLabel(peakSlot) : '—'}</div></div>
       <div class="kpi-tile" title="Estimated from typical congestion over an assumed ~150m viewing distance — a heuristic, not a measurement."><div class="kpi-label">Avg. dwell time</div><div class="kpi-value">${fmtDwell(avgDwellSeconds)}</div></div>
     </div>
     <div class="ov-section">
       <h3>Congestion Trend <small>${trendLabel}${trendDir ? ' · trending ' + trendDir : ''}</small></h3>
-      ${trendChartSvg(trendEntries)}
+      ${trendChartSvg(trendEntries, minScore, maxScore)}
     </div>
     <div class="ov-section">
       <h3>Peak Hours <small>${peakSlot != null ? 'busiest around ' + slotLabel(peakSlot) + (peakDurationMin > 0 ? ', typically for ' + fmtDuration(peakDurationMin) : '') : ''}</small></h3>
-      <div class="chart ai-chart">${vBarChart(filledSlots, maxSlotAvg, slotVehicleEst)}</div>
+      <div class="chart ai-chart">${vBarChart(filledSlots, maxSlotAvg, slotVehicleEst, minScore, maxScore)}</div>
       <div class="chart-axis">
         <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
       </div>
-      <div class="severity-scale"><span>Free</span><div class="scale-track"></div><span>Severe</span></div>
     </div>
     ${weekdayWeekend ? `
     <div class="ov-section">
       <h3>Weekly Pattern</h3>
       <div class="kpi-grid">
-        <div class="kpi-tile"><div class="kpi-label">Weekdays</div><div class="kpi-value" style="font-size:17px; color:${severityColor(weekdayWeekend.weekdayScore)}">${esc(labelForScore(weekdayWeekend.weekdayScore).toUpperCase())}</div></div>
-        <div class="kpi-tile"><div class="kpi-label">Weekends</div><div class="kpi-value" style="font-size:17px; color:${severityColor(weekdayWeekend.weekendScore)}">${esc(labelForScore(weekdayWeekend.weekendScore).toUpperCase())}</div></div>
+        <div class="kpi-tile"><div class="kpi-label">Weekdays</div><div class="kpi-value" style="font-size:17px; color:${severityColor(weekdayWeekend.weekdayScore, minScore, maxScore)}">${esc(labelForScore(weekdayWeekend.weekdayScore).toUpperCase())}</div></div>
+        <div class="kpi-tile"><div class="kpi-label">Weekends</div><div class="kpi-value" style="font-size:17px; color:${severityColor(weekdayWeekend.weekendScore, minScore, maxScore)}">${esc(labelForScore(weekdayWeekend.weekendScore).toUpperCase())}</div></div>
       </div>
     </div>` : ''}
     ${aiInsightsSectionHTML(data)}`;
 }
 
-// .chart/.bar bars colored by a continuous green-to-red climb (see
-// severityColor()) instead of a relative-to-max gradient — this is what
-// actually shows the pattern across the day, not just bar height. `slots` is
-// the gap-filled 48-entry (30-min) array from fillSlotGaps(): every slot
-// gets a bar so the build-up into each peak reads as one continuous shape,
-// but slots without a real sample render at reduced opacity and their
-// tooltip says so. "Free" doesn't get called out by name since the color
-// already says so; only heavy/severe do.
-function vBarChart(slots, max, slotVehicleEst) {
+// .chart/.bar bars colored by a continuous shade of the brand lime (see
+// severityColor()), relative to this billboard's own lowest-to-highest
+// observed range — this is what actually shows the pattern across the day,
+// not just bar height. `slots` is the gap-filled 48-entry (30-min) array
+// from fillSlotGaps(): every slot gets a bar so the build-up into each peak
+// reads as one continuous shape, but slots without a real sample render at
+// reduced opacity and their tooltip says so. "Free" doesn't get called out
+// by name since it's the least busy this location gets; only heavy/severe do.
+function vBarChart(slots, max, slotVehicleEst, minScore, maxScore) {
   return slots.map(({ value: v, real }, i) => {
     if (v == null) return `<div class="bar" data-h="0"></div>`;
     const pct = max ? Math.round((v / max) * 100) : 0;
@@ -2792,7 +2777,7 @@ function vBarChart(slots, max, slotVehicleEst) {
       (label !== 'free' ? ` · ${label.toUpperCase()}` : '') +
       (est != null ? ` · ~${est.toLocaleString()} vehicles` : '') +
       (real ? '' : ' (estimated)');
-    return `<div class="${cls}" data-h="${pct}" data-val="${esc(tip)}" style="background:${severityColor(v)}"></div>`;
+    return `<div class="${cls}" data-h="${pct}" data-val="${esc(tip)}" style="background:${severityColor(v, minScore, maxScore)}"></div>`;
   }).join('');
 }
 
@@ -2823,7 +2808,7 @@ function smoothPath(points) {
   return d;
 }
 
-function trendChartSvg(entries) {
+function trendChartSvg(entries, minScore, maxScore) {
   if (entries.filter(e => e[4]).length < 2) {
     return '<div class="src-empty">Need at least two readings to chart a trend.</div>';
   }
@@ -2842,7 +2827,7 @@ function trendChartSvg(entries) {
   const areaPath = linePath + ` L${points[points.length - 1][0].toFixed(1)},${(padT + innerH).toFixed(1)}` +
     ` L${points[0][0].toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
   const last = points[points.length - 1];
-  const lastColor = severityColor(last[3]);
+  const lastColor = severityColor(last[3], minScore, maxScore);
   const lastLabel = labelForScore(last[3]);
   // "Free" is the expected baseline — the color already says so. Only
   // heavy/severe get called out with a word.
@@ -2850,8 +2835,9 @@ function trendChartSvg(entries) {
 
   // The line itself is the "pattern" — color it with a gradient along its
   // own length (one stop per plotted point) instead of a single flat hue.
+  // Same min/max as the bar chart, so the two visually agree.
   const gradId = 'tg' + Math.random().toString(36).slice(2, 9);
-  const stops = points.map(p => `<stop offset="${(p[0] / W).toFixed(3)}" style="stop-color:${severityColor(p[3])}" />`).join('');
+  const stops = points.map(p => `<stop offset="${(p[0] / W).toFixed(3)}" style="stop-color:${severityColor(p[3], minScore, maxScore)}" />`).join('');
 
   const hitCircles = points.filter(p => p[5]).map(p => {
     const pLabel = labelForScore(p[3]);
