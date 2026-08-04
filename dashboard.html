@@ -202,7 +202,8 @@
      fixed class — see that function for why. This class just carries the
      hover/tap affordance. */
   .bar.severity:hover, .bar.severity.tap-active { filter: brightness(1.25); }
-  .bar.is-peak-hour { box-shadow: 0 0 0 2px var(--text) inset; }
+  .bar.severity.estimated { opacity: .5; }
+  .bar.severity.estimated:hover, .bar.severity.estimated.tap-active { opacity: .75; }
 
   .severity-scale {
     display: flex; align-items: center; gap: 8px; margin-top: 10px;
@@ -581,7 +582,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.12</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.13</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -2503,8 +2504,45 @@ function severityColor(score) {
     const black = 10 + Math.round((v / 49) * 15);
     return `color-mix(in srgb, var(--accent) ${100 - black}%, black ${black}%)`;
   }
-  const black = Math.round(((v - 50) / 50) * 55);
+  // Same restrained darkening as the free range (10-25%) so var(--red) reads
+  // as the same red used everywhere else on the site (booked status, error
+  // banners) instead of getting noticeably muddier than its green
+  // counterpart — only truly severe (top of the range) darkens further.
+  const black = 10 + Math.round(((v - 50) / 50) * 20);
   return `color-mix(in srgb, var(--red) ${100 - black}%, black ${black}%)`;
+}
+
+// Fills every hour bucket with a value, even ones we haven't sampled yet, so
+// the Peak Hours bar chart shows one continuous build-up-to-peak shape
+// instead of scattered bars with gaps. Each real hour's influence decays
+// with distance (roughly halving every ~2h) rather than a straight-line
+// interpolation across the whole gap — a plain average between two elevated
+// readings 14 hours apart (say 6pm and 8am, wrapping through the night)
+// would otherwise plateau at "moderately busy" straight through 3am, which
+// isn't realistic. Past a few hours from any real sample the estimate sags
+// toward a low baseline (typically free-flowing) instead, since that's the
+// safer default absent evidence. Gets more textured as more real hours get
+// sampled — never fabricated outright, just decayed away from what's real.
+const HOUR_FILL_DECAY = 3;
+const HOUR_FILL_BASELINE = 15;
+function fillHourGaps(hourAvgs) {
+  const realHours = hourAvgs.map((v, h) => v != null ? h : null).filter(h => h != null);
+  if (!realHours.length) return hourAvgs.map(() => ({ value: null, real: false }));
+  return hourAvgs.map((v, h) => {
+    if (v != null) return { value: v, real: true };
+    let before = null, after = null, beforeDist = 25, afterDist = 25;
+    for (const rh of realHours) {
+      const distBack = (h - rh + 24) % 24;
+      const distFwd = (rh - h + 24) % 24;
+      if (distBack > 0 && distBack < beforeDist) { beforeDist = distBack; before = rh; }
+      if (distFwd > 0 && distFwd < afterDist) { afterDist = distFwd; after = rh; }
+    }
+    const wBefore = Math.exp(-beforeDist / HOUR_FILL_DECAY);
+    const wAfter = Math.exp(-afterDist / HOUR_FILL_DECAY);
+    const wBase = Math.max(0, 1 - wBefore - wAfter);
+    const value = wBefore * hourAvgs[before] + wAfter * hourAvgs[after] + wBase * HOUR_FILL_BASELINE;
+    return { value: Math.max(0, Math.min(100, Math.round(value))), real: false };
+  });
 }
 
 // Rough vehicle-count estimate: redistributes the billboard's stated daily
@@ -2576,15 +2614,21 @@ function renderTrafficBody(b, data) {
   const hourBuckets = Array.from({ length: 24 }, () => []);
   chrono.forEach(s => hourBuckets[new Date(s.capturedAt).getHours()].push(s.congestionScore));
   const hourAvgs = hourBuckets.map(vals => vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null);
-  const maxHourAvg = Math.max(1, ...hourAvgs.filter(v => v != null));
-  const peakHour = hourAvgs.reduce((best, v, h) => (v != null && (best == null || v > hourAvgs[best])) ? h : best, null);
+  // The full-day shape (build-up into each peak, not just isolated bars for
+  // the hours we happen to have samples for) — see fillHourGaps().
+  const filledHours = fillHourGaps(hourAvgs);
+  const filledValues = filledHours.map(x => x.value);
+  const maxHourAvg = Math.max(1, ...filledValues.filter(v => v != null));
+  const peakHour = filledValues.reduce((best, v, h) => (v != null && (best == null || v > filledValues[best])) ? h : best, null);
 
   const dailyTraffic = (b.dataSources && b.dataSources.manual && b.dataSources.manual.enabled) ? b.dataSources.manual.traffic : null;
-  const hourVehicleEst = estimateHourlyVehicles(hourAvgs, dailyTraffic);
+  const hourVehicleEst = estimateHourlyVehicles(filledValues, dailyTraffic);
 
   // Full history, not a rolling window — as more gets collected the chart
-  // just grows with it.
-  const trendEntries = buildSmoothSeries(chrono, hourAvgs).map(pt => {
+  // just grows with it. Gaps between real readings are blended toward the
+  // full (gap-filled) hour-of-day shape above, so the two charts tell the
+  // same story.
+  const trendEntries = buildSmoothSeries(chrono, filledValues).map(pt => {
     const hour = new Date(pt.t).getHours();
     return [fmtPointLabel(pt.t), pt.score, pt.t, hourVehicleEst[hour], pt.real];
   });
@@ -2603,7 +2647,7 @@ function renderTrafficBody(b, data) {
     </div>
     <div class="ov-section">
       <h3>Peak Hours <small>${peakHour != null ? 'busiest around ' + String(peakHour).padStart(2, '0') + ':00' : ''}</small></h3>
-      <div class="chart ai-chart">${vBarChart(hourAvgs, maxHourAvg, peakHour, hourVehicleEst)}</div>
+      <div class="chart ai-chart">${vBarChart(filledHours, maxHourAvg, hourVehicleEst)}</div>
       <div class="chart-axis">
         <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
       </div>
@@ -2614,18 +2658,24 @@ function renderTrafficBody(b, data) {
 
 // .chart/.bar bars colored by a continuous green-to-red climb (see
 // severityColor()) instead of a relative-to-max gradient — this is what
-// actually shows the pattern across the day, not just bar height. The peak
-// hour gets an outline rather than its own color, so "busiest hour" and
-// "how bad was it" don't fight over the same visual channel.
-function vBarChart(hourAvgs, max, peakHour, hourVehicleEst) {
-  return hourAvgs.map((v, h) => {
+// actually shows the pattern across the day, not just bar height. `hours` is
+// the gap-filled 24-entry array from fillHourGaps(): every hour gets a bar
+// so the build-up into each peak reads as one continuous shape, but hours
+// without a real sample render at reduced opacity and their tooltip says so.
+// "Free" doesn't get called out by name since the color already says so;
+// only heavy/severe do.
+function vBarChart(hours, max, hourVehicleEst) {
+  return hours.map(({ value: v, real }, h) => {
     if (v == null) return `<div class="bar" data-h="0"></div>`;
     const pct = max ? Math.round((v / max) * 100) : 0;
     const label = labelForScore(v);
     let cls = 'bar severity';
-    if (h === peakHour) cls += ' is-peak-hour';
+    if (!real) cls += ' estimated';
     const est = hourVehicleEst[h];
-    const tip = `${String(h).padStart(2, '0')}:00 · ${label.toUpperCase()}` + (est != null ? ` · ~${est.toLocaleString()} vehicles` : '');
+    const tip = `${String(h).padStart(2, '0')}:00` +
+      (label !== 'free' ? ` · ${label.toUpperCase()}` : '') +
+      (est != null ? ` · ~${est.toLocaleString()} vehicles` : '') +
+      (real ? '' : ' (estimated)');
     return `<div class="${cls}" data-h="${pct}" data-val="${esc(tip)}" style="background:${severityColor(v)}"></div>`;
   }).join('');
 }
@@ -2688,7 +2738,9 @@ function trendChartSvg(entries) {
   const stops = points.map(p => `<stop offset="${(p[0] / W).toFixed(3)}" style="stop-color:${severityColor(p[3])}" />`).join('');
 
   const hitCircles = points.filter(p => p[5]).map(p => {
-    const tip = `${p[2]}: ${labelForScore(p[3]).toUpperCase()}` + (p[4] != null ? ` · ~${p[4].toLocaleString()} vehicles` : '');
+    const pLabel = labelForScore(p[3]);
+    const tip = p[2] + (pLabel !== 'free' ? ': ' + pLabel.toUpperCase() : '') +
+      (p[4] != null ? ` · ~${p[4].toLocaleString()} vehicles` : '');
     return `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="8" fill="transparent"><title>${esc(tip)}</title></circle>`;
   }).join('');
 
