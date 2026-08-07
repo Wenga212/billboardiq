@@ -24,7 +24,14 @@
 import puppeteer from '@cloudflare/puppeteer';
 
 const CLAUDE_MODEL = 'claude-opus-4-8';
-const MAX_CONCURRENT_BROWSERS = 3;
+// Cloudflare's Browser Rendering free tier allows only 2 concurrent browser
+// sessions per account — launching a 3rd concurrently gets a 429 ("Unable to
+// create new browser: Rate limit exceeded"), silently dropping that
+// billboard's capture for the tick. Found via wrangler tail after Moratuwa
+// (added after the other 3 billboards, always last in query order) had zero
+// captures ever: 3 of 4 billboards hit the 429 in the same tick. Keeping this
+// at 1 launches sessions strictly one at a time, staying under the limit.
+const MAX_CONCURRENT_BROWSERS = 1;
 const INSIGHT_REFRESH_DAYS = 7;
 const INSIGHT_MIN_NEW_SNAPSHOTS = 20;
 const PENDING_RETENTION_DAYS = 7; // safety net if pending_snapshots isn't processed for a while
@@ -265,6 +272,20 @@ async function refreshInsightIfDue(env, billboard) {
     .run();
 }
 
+// Fisher-Yates shuffle — used so capture order isn't always the same fixed
+// (oldest-billboard-first) sequence every tick. With browser launches now
+// serialized (MAX_CONCURRENT_BROWSERS=1), whichever billboard is due but
+// runs out of tick time/budget last would otherwise always be the same one;
+// shuffling spreads that risk evenly across all active billboards instead.
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 async function runBatch(items, limit, fn) {
   let i = 0;
   async function worker() {
@@ -303,7 +324,7 @@ export default {
     });
     if (!due.length) return;
 
-    await runBatch(due, MAX_CONCURRENT_BROWSERS, b => captureAndQueue(env, b));
+    await runBatch(shuffled(due), MAX_CONCURRENT_BROWSERS, b => captureAndQueue(env, b));
 
     // analyzeScreenshot()/refreshInsightIfDue() intentionally not called here — see file header.
   }
