@@ -1,6 +1,13 @@
 /* ================================================================
    BillboardIQ Auth API — Cloudflare Pages Functions + D1
    Binding required: D1 database bound as `DB` in Pages settings.
+   Optional secrets: RESEND_API_KEY (owner email notification on new
+   signups — silently skipped if unset), OWNER_NOTIFY_EMAIL (destination,
+   defaults to OWNER_NOTIFY_EMAIL constant below).
+   MFA is mandatory for provider/admin/superuser (MFA_REQUIRED_ROLES) —
+   enforced fresh on every request from current role + MFA status, so a
+   role change or a newly-added mandatory role takes effect immediately
+   for already-open sessions, not just new logins (see getAuth()).
    Endpoints (all under /api/):
      GET  auth/status          → { needsBootstrap }
      POST auth/bootstrap       → create FIRST superuser (only when DB empty)
@@ -30,10 +37,11 @@ const MFA_PENDING_MINUTES = 5;
 const LOCKOUT_AFTER = 5;          // failed attempts
 const LOCKOUT_MINUTES = 15;
 const MIN_PASSWORD_LEN = 10;
-const MFA_REQUIRED_ROLES = ['admin', 'superuser'];
+const MFA_REQUIRED_ROLES = ['provider', 'admin', 'superuser'];
 const ROLE_RANK = { user: 1, provider: 1, admin: 2, superuser: 3 };
 const PUBLISH_ROLES = ['provider', 'admin', 'superuser'];
 const CLAUDE_MODEL = 'claude-opus-4-8';
+const OWNER_NOTIFY_EMAIL = 'wenga212@gmail.com';
 
 const enc = new TextEncoder();
 
@@ -156,10 +164,18 @@ async function getAuth(env, req) {
   if (!tok) return null;
   const th = await sha256hex(tok);
   const row = await env.DB.prepare(
-    'SELECT s.token_hash AS session_hash, s.restricted, s.expires_at AS session_expires, u.* ' +
+    'SELECT s.token_hash AS session_hash, s.expires_at AS session_expires, u.* ' +
     'FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?'
   ).bind(th).first();
   if (!row || row.session_expires < Date.now()) return null;
+  // Recomputed fresh every request from the user's *current* role and MFA
+  // status — not trusted from whatever was stored on the sessions row at
+  // login time. That's what makes a role change (e.g. promoting someone
+  // into an MFA-mandatory role, or demoting them out of one) take effect
+  // immediately on their very next request, without needing them to log
+  // out and back in, and without leaving a demoted user stuck behind an
+  // MFA wall for a role they no longer have.
+  row.restricted = MFA_REQUIRED_ROLES.includes(row.role) && !row.mfa_enabled;
   return row;
 }
 
@@ -179,6 +195,35 @@ async function audit(env, userId, action, detail) {
     await env.DB.prepare('INSERT INTO audit_log (user_id, action, detail, created_at) VALUES (?,?,?,?)')
       .bind(userId || null, action, (detail || '').slice(0, 300), Date.now()).run();
   } catch (e) { /* audit must never break auth */ }
+}
+
+// Notifies the site owner by email whenever a new account is created (a
+// genuinely new sign-in request, as opposed to an existing user logging
+// back in). Uses Resend's REST API — no SDK needed, just a fetch — gated
+// behind env.RESEND_API_KEY so this is a silent no-op until that secret is
+// set (wrangler pages secret put RESEND_API_KEY). Never throws into the
+// caller: a notification failure must never block someone from signing up.
+async function notifyOwnerOfNewAccount(env, { email, name, role, companyName }) {
+  if (!env.RESEND_API_KEY) return;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + env.RESEND_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: env.RESEND_FROM || 'BillboardIQ <onboarding@resend.dev>',
+        to: [env.OWNER_NOTIFY_EMAIL || OWNER_NOTIFY_EMAIL],
+        subject: 'BillboardIQ: new ' + role + ' account — ' + email,
+        text: 'A new account just signed up.\n\n' +
+          'Name: ' + name + '\n' +
+          'Email: ' + email + '\n' +
+          'Role: ' + role + (companyName ? '\nCompany: ' + companyName : '') + '\n' +
+          'Time: ' + new Date().toISOString()
+      })
+    });
+  } catch (e) { /* notification must never break signup */ }
 }
 
 /* ---------------- AI traffic engine (manual run, superuser only) ----------
@@ -600,11 +645,10 @@ export async function onRequest(context) {
         const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE role='superuser'").first();
         if (c.n <= 1) return bad('Cannot demote the last superuser.', 400);
       }
+      // Role takes effect on the target's very next request — see getAuth(),
+      // which derives `restricted` fresh from current role + MFA status
+      // rather than trusting anything cached on the sessions row.
       await env.DB.prepare('UPDATE users SET role=? WHERE id=?').bind(role, userId).run();
-      // Force re-auth if promoted into an MFA-mandatory role without MFA
-      if (MFA_REQUIRED_ROLES.includes(role) && !target.mfa_enabled) {
-        await env.DB.prepare('UPDATE sessions SET restricted=1 WHERE user_id=?').bind(userId).run();
-      }
       await audit(env, me.id, 'role_change', target.email + ' → ' + role);
       return json({ ok: true });
     }
@@ -938,6 +982,7 @@ async function register(env, request, body, role, auditAction) {
     'INSERT INTO users (id,email,name,role,company_name,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?,?,?)'
   ).bind(id, email, name, role, companyName, hash, salt, Date.now()).run();
   await audit(env, id, auditAction, email + ' (' + role + ')');
+  await notifyOwnerOfNewAccount(env, { email, name, role, companyName });
 
   // Sign them straight in. MFA-mandatory roles get a restricted session.
   const restricted = MFA_REQUIRED_ROLES.includes(role);

@@ -568,7 +568,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.17</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.18</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -897,7 +897,11 @@ async function api(path, body) {
   });
   let data = {};
   try { data = await res.json(); } catch (e) {}
-  if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+  if (!res.ok) {
+    const err = new Error(data.error || ('Request failed (' + res.status + ')'));
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 function esc(s) {
@@ -1335,7 +1339,7 @@ function hydrateSources(ds) {
     const d = await api('me');
     me = d.user;
     if (me.restricted) {
-      gate('MFA REQUIRED', 'Finish MFA setup on the sign-in page before managing billboards.');
+      location.href = 'login.html';
       return;
     }
     if (me.role === 'user') {
@@ -1359,7 +1363,8 @@ function hydrateSources(ds) {
     await refresh();
     switchView('overview');
   } catch (e) {
-    gate('SIGN IN REQUIRED', 'You need to be signed in to manage billboard listings.');
+    if (e.status === 401) { location.href = 'login.html'; return; }
+    gate('CONNECTION ERROR', "Couldn't verify your session — check your connection and reload.");
   }
 })();
 

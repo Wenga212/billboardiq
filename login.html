@@ -180,7 +180,7 @@
 
 <div class="wrap">
   <div class="brand">
-    <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.17</span></a>
+    <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.18</span></a>
     <button class="pill" id="themeBtn">◐ LIGHT</button>
   </div>
 
@@ -441,13 +441,14 @@ function afterAuth(d) {
   else redirectHome();
 }
 
-// Providers/admins/superusers land on the dashboard first; everyone else lands
-// on the map. Only called right after a fresh sign-in/register/MFA action —
-// never from boot()'s "already signed in" check, so opening the Account page
-// while signed in still shows the account card instead of bouncing away.
+// Admins/superusers land on the dashboard first; providers and regular users
+// land on the map. Only called right after a fresh sign-in/register/MFA
+// action — never from boot()'s "already signed in" check, so opening the
+// Account page while signed in still shows the account card instead of
+// bouncing away.
 function redirectHome() {
   try { sessionStorage.setItem('bbiq-home-routed', '1'); } catch (e) {}
-  const home = ['provider', 'admin', 'superuser'].includes(currentUser.role) ? 'dashboard.html' : 'index.html';
+  const home = ['admin', 'superuser'].includes(currentUser.role) ? 'dashboard.html' : 'index.html';
   location.href = home;
 }
 
