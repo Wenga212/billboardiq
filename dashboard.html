@@ -568,7 +568,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.16</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.17</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -1362,6 +1362,13 @@ function hydrateSources(ds) {
     gate('SIGN IN REQUIRED', 'You need to be signed in to manage billboard listings.');
   }
 })();
+
+// Pressing Back/Forward after signing out can restore this page from the
+// browser's bfcache — a painted snapshot from when the user was still
+// signed in, served without re-running any of the auth checks above. A
+// full reload forces boot() to re-check /api/me for real, so a stale
+// session can't leave the dashboard visible to a signed-out visitor.
+window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
 // Compatibility no-op so any stray reference doesn't throw
 function renderPeakChips_removed() {}
@@ -2638,41 +2645,22 @@ function estimateSlotVehicles(slotAvgs, dailyTraffic) {
   return slotAvgs.map((v, i) => v == null ? null : Math.round(dailyTraffic * weights[i] / total));
 }
 
-// Real congestion readings are sparse and swing hard between samples (free
-// at 2am, heavy at 8am, free again by 10) — connecting them directly makes
-// an otherwise-smooth spline look spiky. For gaps over 30 minutes, this
-// fills in extra points (one per slot-width, so the curve is at least as
-// dense as the bar chart) leaning heavily on the bar chart's own per-slot
-// estimate (slotAvgs, from fillSlotGaps — already decay-blended from every
-// real anchor, not just these two neighbors) rather than a plain straight
-// line between just the two nearest readings, so the curve actually tells
-// the same story as the bars instead of a cruder approximation of it. Real
-// readings are always kept exactly as collected and flagged `real: true`;
-// only synthetic in-between points are estimated, and every render
-// recomputes them fresh from whatever's actually been collected by then —
-// so the curve gets more accurate over time as real data fills in, never
-// less.
-const TREND_GAP_MS = SLOT_MINUTES * 60 * 1000;
-const TREND_MAX_FILL_PER_GAP = 16;
-function buildSmoothSeries(chrono, slotAvgs) {
-  const series = [];
-  for (let i = 0; i < chrono.length; i++) {
-    series.push({ t: chrono[i].capturedAt, score: chrono[i].congestionScore, real: true });
-    if (i === chrono.length - 1) continue;
-    const t0 = chrono[i].capturedAt, t1 = chrono[i + 1].capturedAt;
-    const v0 = chrono[i].congestionScore, v1 = chrono[i + 1].congestionScore;
-    const gap = t1 - t0;
-    if (gap <= TREND_GAP_MS) continue;
-    const steps = Math.min(TREND_MAX_FILL_PER_GAP, Math.floor(gap / TREND_GAP_MS));
-    for (let s = 1; s <= steps; s++) {
-      const t = t0 + (gap * s) / (steps + 1);
-      const linInterp = v0 + (v1 - v0) * (s / (steps + 1));
-      const typical = slotAvgs[slotOf(t)];
-      const blended = typical != null ? (linInterp * 0.25 + typical * 0.75) : linInterp;
-      series.push({ t, score: Math.max(0, Math.min(100, Math.round(blended))), real: false });
-    }
-  }
-  return series;
+// The trend chart shows the day-to-day (and so, over enough weeks,
+// week-to-week) rhythm across the whole collection period — one averaged
+// point per calendar day, not every raw reading. Peak Hours already covers
+// the intra-day shape; this is the complementary view of how congestion at
+// this location is moving over the data period itself.
+function buildDailySeries(chrono) {
+  const byDay = {};
+  chrono.forEach(s => {
+    const day = new Date(s.capturedAt).toISOString().slice(0, 10);
+    (byDay[day] = byDay[day] || []).push(s.congestionScore);
+  });
+  return Object.keys(byDay).sort().map(day => {
+    const vals = byDay[day];
+    const score = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+    return { t: new Date(day + 'T12:00:00').getTime(), score, real: true };
+  });
 }
 
 function renderTrafficBody(b, data) {
@@ -2715,11 +2703,9 @@ function renderTrafficBody(b, data) {
   const avgDwellSeconds = estimateDwellSeconds(typicalScore);
 
   // Full history, not a rolling window — as more gets collected the chart
-  // just grows with it. Gaps between real readings are blended toward the
-  // full (gap-filled) time-of-day shape above, so the two charts tell the
-  // same story.
-  const trendEntries = buildSmoothSeries(chrono, filledValues).map(pt => {
-    return [fmtPointLabel(pt.t), pt.score, pt.t, slotVehicleEst[slotOf(pt.t)], pt.real];
+  // just grows with it.
+  const trendEntries = buildDailySeries(chrono).map(pt => {
+    return [fmtDayLabel(pt.t), pt.score, pt.t, null, pt.real];
   });
   const trendLabel = `${days} day${days === 1 ? '' : 's'} of history, ${chrono.length} reading${chrono.length === 1 ? '' : 's'}`;
   const trendDir = trendDirection(chrono);
@@ -2784,10 +2770,8 @@ function vBarChart(slots, max, slotVehicleEst, minScore, maxScore) {
 // Hand-rolled line chart: single accent hue, 2px line, ~10% area wash, no
 // per-point clutter — just a hover title on each point and a direct label
 // on the most recent value (the one the story is about).
-function fmtPointLabel(ts) {
-  const d = new Date(ts);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
-    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+function fmtDayLabel(ts) {
+  return new Date(ts).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 // Smooth Catmull-Rom-to-Bezier spline through a polyline's points.
@@ -2810,7 +2794,7 @@ function smoothPath(points) {
 
 function trendChartSvg(entries, minScore, maxScore) {
   if (entries.filter(e => e[4]).length < 2) {
-    return '<div class="src-empty">Need at least two readings to chart a trend.</div>';
+    return '<div class="src-empty">Need at least two days of history to chart a trend.</div>';
   }
   const W = 600, H = 140, padL = 8, padR = 70, padT = 12, padB = 20;
   const innerW = W - padL - padR, innerH = H - padT - padB;
@@ -2819,9 +2803,8 @@ function trendChartSvg(entries, minScore, maxScore) {
   const x = t => padL + (tMax === tMin ? 0 : ((t - tMin) / (tMax - tMin)) * innerW);
   const y = v => padT + innerH - (v / 100) * innerH;
 
-  // entries include both real readings and gap-filled estimates (see
-  // buildSmoothSeries) — both feed the visual curve, but only real ones get
-  // a hover title, so hovering never claims a measurement that isn't one.
+  // One point per calendar day (see buildDailySeries) — every point is a
+  // real daily average, so every point gets a hover title.
   const points = entries.map(([label, v, t, vehicleEst, real]) => [x(t), y(v), label, v, vehicleEst, real]);
   const linePath = smoothPath(points);
   const areaPath = linePath + ` L${points[points.length - 1][0].toFixed(1)},${(padT + innerH).toFixed(1)}` +

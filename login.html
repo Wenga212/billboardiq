@@ -180,7 +180,7 @@
 
 <div class="wrap">
   <div class="brand">
-    <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.16</span></a>
+    <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.17</span></a>
     <button class="pill" id="themeBtn">◐ LIGHT</button>
   </div>
 
@@ -517,6 +517,12 @@ $('me-logout').addEventListener('click', async () => {
   const s = await api('auth/status').catch(() => ({ needsBootstrap: false }));
   show(s.needsBootstrap ? 'v-setup' : 'v-auth');
 });
+
+// Pressing Back/Forward after signing out can restore this page from the
+// browser's bfcache — a painted snapshot showing the previously signed-in
+// account view (email, role, MFA status), served without re-running boot()
+// above. A full reload forces a fresh /api/me check.
+window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 </script>
 </body>
 </html>

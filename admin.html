@@ -166,7 +166,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.16</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.17</span></a>
   <div class="breadcrumb">CONSOLE / <span>USERS &amp; ROLES</span></div>
   <div class="top-actions">
     <span class="pill" id="whoami" style="cursor:default"></span>
@@ -289,6 +289,13 @@ function gate(title, msg, showBtn) {
     gate('NOT SIGNED IN', 'Sign in with an admin or superuser account to open the console.', true);
   }
 })();
+
+// Pressing Back/Forward after signing out can restore this page from the
+// browser's bfcache — a painted snapshot from when the user was still
+// signed in, served without re-running any of the auth checks above. A
+// full reload forces boot() to re-check /api/me for real, so a stale
+// session can't leave the console visible to a signed-out visitor.
+window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
 async function loadUsers() {
   const d = await api('admin/users');
