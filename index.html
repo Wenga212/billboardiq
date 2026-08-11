@@ -894,10 +894,12 @@
     font-weight: 400;
   }
   .section h3 small {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    letter-spacing: .2px;
     color: var(--muted);
-    font-weight: 400;
+    font-weight: 300;
+    opacity: .8;
   }
 
   .chart { height: 80px; display: flex; align-items: flex-end; gap: 3px; }
@@ -1123,7 +1125,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.19</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.20</span></a>
   <div class="top-actions">
     <button class="icon-btn" id="trafficPill" title="Live traffic layer" aria-label="Toggle live traffic layer" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1988,28 +1990,6 @@ function weekdayWeekendSplit(chrono) {
   return { weekdayScore: avg(weekday), weekendScore: avg(weekend) };
 }
 
-// Is this location trending busier or calmer over the collection period?
-// Compares the average of the first half of days sampled vs. the second
-// half. Needs at least 3 distinct days before saying anything — and even
-// then, only calls it if the shift clears a threshold, so normal day-to-day
-// noise doesn't get reported as a "trend."
-function trendDirection(chrono) {
-  const byDay = {};
-  chrono.forEach(s => {
-    const day = new Date(s.capturedAt).toISOString().slice(0, 10);
-    (byDay[day] = byDay[day] || []).push(s.congestionScore);
-  });
-  const days = Object.keys(byDay).sort();
-  if (days.length < 3) return null;
-  const dayAvgs = days.map(d => byDay[d].reduce((s, v) => s + v, 0) / byDay[d].length);
-  const half = Math.floor(dayAvgs.length / 2);
-  const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
-  const diff = avg(dayAvgs.slice(-half)) - avg(dayAvgs.slice(0, half));
-  if (diff > 8) return 'busier';
-  if (diff < -8) return 'calmer';
-  return null; // steady enough that it's not worth calling out
-}
-
 // Real congestion readings are sparse and swing hard between samples (free
 // at 2am, heavy at 8am, free again by 10) — connecting them directly makes
 // an otherwise-smooth spline look spiky. For gaps over 30 minutes, this
@@ -2063,7 +2043,7 @@ function estimateSlotVehicles(slotAvgs, dailyTraffic) {
 function renderAiTrafficSection(b, data) {
   const snapshots = data.snapshots || [];
   const aiInsightsHtml = data.aiInsights
-    ? `<div class="section"><h3>AI Insights <small>CLAUDE</small></h3><p style="font-size:13px; line-height:1.6; color:var(--text);">${esc(data.aiInsights)}</p></div>`
+    ? `<div class="section"><h3>Claude</h3><p style="font-size:13px; line-height:1.6; color:var(--text);">${esc(data.aiInsights)}</p></div>`
     : '';
 
   if (!snapshots.length) {
@@ -2108,9 +2088,6 @@ function renderAiTrafficSection(b, data) {
   const trendEntries = buildSmoothSeries(chrono, filledValues).map(pt => {
     return [fmtPointLabel(pt.t), pt.score, pt.t, slotVehicleEst[slotOf(pt.t)], pt.real];
   });
-  const trendDays = new Set(chrono.map(s => new Date(s.capturedAt).toISOString().slice(0, 10))).size;
-  const trendLabel = `${trendDays} day${trendDays === 1 ? '' : 's'} of history, ${chrono.length} reading${chrono.length === 1 ? '' : 's'}`;
-  const trendDir = trendDirection(chrono);
   const peakDurationMin = estimatePeakDurationMinutes(filledValues);
   const weekdayWeekend = weekdayWeekendSplit(chrono);
 
@@ -2123,7 +2100,7 @@ function renderAiTrafficSection(b, data) {
         <div class="kpi-tile"><div class="kpi-label">Peak time</div><div class="kpi-value">${peakSlot != null ? slotLabel(peakSlot) : '—'}</div></div>
         <div class="kpi-tile" title="Estimated from typical congestion over an assumed ~150m viewing distance — a heuristic, not a measurement."><div class="kpi-label">Avg. dwell time</div><div class="kpi-value">${fmtDwell(avgDwellSeconds)}</div></div>
       </div>
-      <h3 style="margin-top:4px;">Congestion Trend <small>${trendLabel}${trendDir ? ' · trending ' + trendDir : ''}</small></h3>
+      <h3 style="margin-top:4px;">Congestion Trend</h3>
       ${trendChartSvg(trendEntries, minScore, maxScore)}
       <h3 style="margin-top:16px;">Peak Hours <small>${peakSlot != null ? 'busiest around ' + slotLabel(peakSlot) + (peakDurationMin > 0 ? ', typically for ' + fmtDuration(peakDurationMin) : '') : ''}</small></h3>
       <div class="chart ai-chart">${vBarChart(filledSlots, maxSlotAvg, slotVehicleEst, minScore, maxScore)}</div>

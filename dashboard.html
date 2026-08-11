@@ -162,6 +162,10 @@
     font-family:'Bebas Neue',sans-serif; font-size:15px; letter-spacing:1.5px;
     font-weight:400; margin-bottom:12px;
   }
+  .ov-section h3 small {
+    font-family:'DM Sans',sans-serif; font-size:11px; letter-spacing:.2px;
+    color:var(--muted); font-weight:300; opacity:.8;
+  }
 
   .util-bar {
     display:flex; height:20px; border-radius:4px; overflow:hidden;
@@ -568,7 +572,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.19</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.20</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -2470,7 +2474,7 @@ async function openTrafficModal(b) {
 function aiInsightsSectionHTML(data) {
   return `
     <div class="ov-section">
-      <h3>AI Insights</h3>
+      <h3>Claude</h3>
       ${data.aiInsights
         ? `<p style="font-size:13px; line-height:1.6;">${esc(data.aiInsights)}</p><div class="list-sub" style="margin-top:8px;">Updated ${daysAgo(data.aiInsightsUpdatedAt)}</div>`
         : '<div class="src-empty">No assessment yet.</div>'}
@@ -2615,28 +2619,6 @@ function weekdayWeekendSplit(chrono) {
   return { weekdayScore: avg(weekday), weekendScore: avg(weekend) };
 }
 
-// Is this location trending busier or calmer over the collection period?
-// Compares the average of the first half of days sampled vs. the second
-// half. Needs at least 3 distinct days before saying anything — and even
-// then, only calls it if the shift clears a threshold, so normal day-to-day
-// noise doesn't get reported as a "trend."
-function trendDirection(chrono) {
-  const byDay = {};
-  chrono.forEach(s => {
-    const day = new Date(s.capturedAt).toISOString().slice(0, 10);
-    (byDay[day] = byDay[day] || []).push(s.congestionScore);
-  });
-  const days = Object.keys(byDay).sort();
-  if (days.length < 3) return null;
-  const dayAvgs = days.map(d => byDay[d].reduce((s, v) => s + v, 0) / byDay[d].length);
-  const half = Math.floor(dayAvgs.length / 2);
-  const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
-  const diff = avg(dayAvgs.slice(-half)) - avg(dayAvgs.slice(0, half));
-  if (diff > 8) return 'busier';
-  if (diff < -8) return 'calmer';
-  return null;
-}
-
 // Rough vehicle-count estimate: redistributes the billboard's stated daily
 // traffic across the slots we have AI congestion readings for, weighted by
 // relative congestion (a +5 floor keeps free-flowing slots from being
@@ -2733,8 +2715,6 @@ function renderTrafficBody(b, data) {
   const trendEntries = buildSmoothSeries(chrono, filledValues).map(pt => {
     return [fmtPointLabel(pt.t), pt.score, pt.t, slotVehicleEst[slotOf(pt.t)], pt.real];
   });
-  const trendLabel = `${days} day${days === 1 ? '' : 's'} of history, ${chrono.length} reading${chrono.length === 1 ? '' : 's'}`;
-  const trendDir = trendDirection(chrono);
   const peakDurationMin = estimatePeakDurationMinutes(filledValues);
   const weekdayWeekend = weekdayWeekendSplit(chrono);
 
@@ -2748,7 +2728,7 @@ function renderTrafficBody(b, data) {
       <div class="kpi-tile" title="Estimated from typical congestion over an assumed ~150m viewing distance — a heuristic, not a measurement."><div class="kpi-label">Avg. dwell time</div><div class="kpi-value">${fmtDwell(avgDwellSeconds)}</div></div>
     </div>
     <div class="ov-section">
-      <h3>Congestion Trend <small>${trendLabel}${trendDir ? ' · trending ' + trendDir : ''}</small></h3>
+      <h3>Congestion Trend</h3>
       ${trendChartSvg(trendEntries, minScore, maxScore)}
     </div>
     <div class="ov-section">
