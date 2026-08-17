@@ -801,7 +801,22 @@ export async function onRequest(context) {
         densityLabel: r.density_label,
         note: r.note || null
       }));
-      return json({ snapshots, aiInsights: bb.ai_insights || null, aiInsightsUpdatedAt: bb.ai_insights_updated_at || null });
+      // Lets the client scale this billboard's charts against the busiest
+      // reading across every listing (not just its own range), so a quiet
+      // location visibly reads as quieter next to a busy one instead of both
+      // charts independently stretching to fill their own axis. Scoped to
+      // approved listings plus this billboard itself (covers the pending/
+      // owner-preview case) so the range always includes what's on screen.
+      const range = await env.DB.prepare(
+        `SELECT MIN(ts.congestion_score) AS lo, MAX(ts.congestion_score) AS hi
+         FROM traffic_snapshots ts JOIN billboards b ON b.id = ts.billboard_id
+         WHERE b.approval_state = 'approved' OR b.id = ?`
+      ).bind(id).first();
+      return json({
+        snapshots, aiInsights: bb.ai_insights || null, aiInsightsUpdatedAt: bb.ai_insights_updated_at || null,
+        globalMin: range && range.lo != null ? range.lo : null,
+        globalMax: range && range.hi != null ? range.hi : null
+      });
     }
 
     // Get a single billboard (owner or admin+ only)
