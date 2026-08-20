@@ -87,11 +87,11 @@
     letter-spacing:1.5px; text-transform:uppercase; color:var(--muted);
     margin:14px 0 6px;
   }
-  input {
+  input, select {
     width:100%; background:var(--panel-2); border:1px solid var(--line);
     color:var(--text); padding:11px 12px; font-family:'DM Sans',sans-serif; font-size:14px;
   }
-  input:focus { outline:none; border-color:var(--accent); }
+  input:focus, select:focus { outline:none; border-color:var(--accent); }
   input.code {
     font-family:'JetBrains Mono',monospace; font-size:26px; letter-spacing:12px;
     text-align:center; padding:14px 6px;
@@ -140,6 +140,7 @@
   }
   .role.user { background:var(--green-bg); color:var(--green); }
   .role.provider { background:rgba(95,122,0,.14); color:var(--accent-text); }
+  .role.agent { background:rgba(95,122,0,.14); color:var(--accent-text); }
   .role.admin { background:var(--amber-bg); color:var(--amber); }
   .role.superuser { background:var(--red-bg); color:var(--red); }
   .account-type { display:flex; gap:8px; margin-top:14px; }
@@ -180,7 +181,7 @@
 
 <div class="wrap">
   <div class="brand">
-    <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.22</span></a>
+    <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.23</span></a>
     <button class="pill" id="themeBtn">◐ LIGHT</button>
   </div>
 
@@ -228,7 +229,11 @@
             </div>
             <div class="type-opt" data-account-type="provider">
               <b>Advertising Provider</b>
-              <span>List &amp; manage your own billboards</span>
+              <span>Own &amp; list billboards</span>
+            </div>
+            <div class="type-opt" data-account-type="agent">
+              <b>Advertising Agent</b>
+              <span>Book inventory for clients</span>
             </div>
           </div>
         </div>
@@ -236,7 +241,33 @@
           <label>Name</label><input id="a-name" autocomplete="name" />
         </div>
         <div id="reg-company-wrap" style="display:none">
-          <label>Company Name</label><input id="a-company" autocomplete="organization" />
+          <label>Company</label>
+          <div class="account-type" style="margin-top:0">
+            <div class="type-opt active" data-company-mode="join">
+              <b>Join Existing</b>
+              <span>Pick your company from the list</span>
+            </div>
+            <div class="type-opt" data-company-mode="new">
+              <b>Create New</b>
+              <span>You're the first from this company</span>
+            </div>
+          </div>
+          <div id="company-join-wrap" style="margin-top:10px">
+            <select id="a-company-select">
+              <option value="">Loading companies…</option>
+            </select>
+          </div>
+          <div id="company-new-wrap" style="display:none; margin-top:10px">
+            <input id="a-company-new" autocomplete="organization" placeholder="Company name" />
+            <div class="account-type" style="margin-top:10px">
+              <div class="type-opt active" data-company-type="provider">
+                <b>Provider</b><span>Owns billboards</span>
+              </div>
+              <div class="type-opt" data-company-type="agency">
+                <b>Agency</b><span>Books for clients</span>
+              </div>
+            </div>
+          </div>
         </div>
         <label>Email</label><input id="a-email" type="email" autocomplete="email" />
         <label>Password</label><input id="a-pass" type="password" autocomplete="current-password" />
@@ -315,16 +346,45 @@ document.documentElement.setAttribute('data-theme', theme);
 document.getElementById('themeBtn').textContent = theme === 'dark' ? '◑ DARK' : '◐ LIGHT';
 let mode = 'signin';
 let accountType = 'user';
+let companyMode = 'join';
+let newCompanyType = 'provider';
+let companiesLoaded = false;
 let pendingToken = null;
 let currentUser = null;
+function escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* account type picker (register only) */
-document.querySelectorAll('.type-opt').forEach(opt => opt.addEventListener('click', () => {
-  document.querySelectorAll('.type-opt').forEach(o => o.classList.remove('active'));
+document.querySelectorAll('[data-account-type]').forEach(opt => opt.addEventListener('click', () => {
+  document.querySelectorAll('[data-account-type]').forEach(o => o.classList.remove('active'));
   opt.classList.add('active');
   accountType = opt.dataset.accountType;
-  $('reg-company-wrap').style.display = accountType === 'provider' ? 'block' : 'none';
+  const needsCompany = accountType === 'provider' || accountType === 'agent';
+  $('reg-company-wrap').style.display = needsCompany ? 'block' : 'none';
+  if (needsCompany) loadCompanies();
 }));
+
+/* company: join existing vs create new (register, provider/agent only) */
+document.querySelectorAll('[data-company-mode]').forEach(opt => opt.addEventListener('click', () => {
+  document.querySelectorAll('[data-company-mode]').forEach(o => o.classList.remove('active'));
+  opt.classList.add('active');
+  companyMode = opt.dataset.companyMode;
+  $('company-join-wrap').style.display = companyMode === 'join' ? 'block' : 'none';
+  $('company-new-wrap').style.display = companyMode === 'new' ? 'block' : 'none';
+}));
+document.querySelectorAll('[data-company-type]').forEach(opt => opt.addEventListener('click', () => {
+  document.querySelectorAll('[data-company-type]').forEach(o => o.classList.remove('active'));
+  opt.classList.add('active');
+  newCompanyType = opt.dataset.companyType;
+}));
+async function loadCompanies() {
+  if (companiesLoaded) return;
+  try {
+    const d = await api('auth/companies');
+    companiesLoaded = true;
+    $('a-company-select').innerHTML = '<option value="">Select your company…</option>' +
+      (d.companies || []).map(c => '<option value="' + escHtml(c.id) + '">' + escHtml(c.name) + '</option>').join('');
+  } catch (e) { $('a-company-select').innerHTML = '<option value="">Could not load companies</option>'; }
+}
 
 /* theme */
 $('themeBtn').addEventListener('click', () => {
@@ -408,7 +468,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   $('a-pass').autocomplete = mode === 'signin' ? 'current-password' : 'new-password';
   if (mode === 'signin') {
     accountType = 'user';
-    document.querySelectorAll('.type-opt').forEach(o => o.classList.toggle('active', o.dataset.accountType === 'user'));
+    document.querySelectorAll('[data-account-type]').forEach(o => o.classList.toggle('active', o.dataset.accountType === 'user'));
     $('reg-company-wrap').style.display = 'none';
   }
 }));
@@ -425,10 +485,17 @@ async function submitAuth() {
       if (d.mfaRequired) { pendingToken = d.pending; show('v-mfa'); $('m-code').focus(); }
       else { currentUser = d.user; afterAuth(d); }
     } else {
-      const d = await api('auth/register', {
-        name: $('a-name').value, email: $('a-email').value, password: $('a-pass').value,
-        accountType, companyName: $('a-company').value
-      });
+      const payload = { name: $('a-name').value, email: $('a-email').value, password: $('a-pass').value, accountType };
+      if (accountType === 'provider' || accountType === 'agent') {
+        if (companyMode === 'join') {
+          payload.companyId = $('a-company-select').value;
+          if (!payload.companyId) { err('a-err', 'Please select your company.'); busy('a-btn', false, label); return; }
+        } else {
+          payload.newCompanyName = $('a-company-new').value;
+          payload.newCompanyType = newCompanyType;
+        }
+      }
+      const d = await api('auth/register', payload);
       currentUser = d.user;
       toast('Account created');
       afterAuth(d);
@@ -448,7 +515,7 @@ function afterAuth(d) {
 // bouncing away.
 function redirectHome() {
   try { sessionStorage.setItem('bbiq-home-routed', '1'); } catch (e) {}
-  const home = ['admin', 'superuser'].includes(currentUser.role) ? 'dashboard.html' : 'index.html';
+  const home = ['admin', 'superuser', 'provider', 'agent'].includes(currentUser.role) ? 'dashboard.html' : 'index.html';
   location.href = home;
 }
 

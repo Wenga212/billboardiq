@@ -4,14 +4,23 @@
    Optional secrets: RESEND_API_KEY (owner email notification on new
    signups — silently skipped if unset), OWNER_NOTIFY_EMAIL (destination,
    defaults to OWNER_NOTIFY_EMAIL constant below).
-   MFA is mandatory for provider/admin/superuser (MFA_REQUIRED_ROLES) —
-   enforced fresh on every request from current role + MFA status, so a
+   MFA is mandatory for provider/agent/admin/superuser (MFA_REQUIRED_ROLES)
+   — enforced fresh on every request from current role + MFA status, so a
    role change or a newly-added mandatory role takes effect immediately
    for already-open sessions, not just new logins (see getAuth()).
+
+   Companies (schema/008+): billboards belong to a `company`, shared by
+   every user in it (provider or agent role) — not just their creator.
+   `provider` accounts own/add billboards; `agent` accounts manage
+   existing inventory and their own `customers` (lightweight tenants like
+   "Coca-Cola") without creating new billboards. Budgets on a customer are
+   informational only — nothing here blocks a booking.
+
    Endpoints (all under /api/):
      GET  auth/status          → { needsBootstrap }
+     GET  auth/companies       → public, company picker for signup
      POST auth/bootstrap       → create FIRST superuser (only when DB empty)
-     POST auth/register        → public signup (role: user)
+     POST auth/register        → public signup (role: user/provider/agent)
      POST auth/login           → step 1 (password)
      POST auth/mfa/verify      → step 2 (TOTP code) → session
      POST auth/mfa/enroll      → get secret + otpauth URI (auth required)
@@ -25,10 +34,19 @@
      GET  admin/ai-engine/status → superuser, pending snapshot count
      POST admin/ai-engine/run  → superuser, streams NDJSON progress — analyzes
                                   queued pending_snapshots with Claude vision
+     GET  admin/companies      → superuser, company list + aggregate stats
+     POST admin/companies/create → superuser, pre-onboard a company
+     GET  admin/companies/<id> → superuser, members + per-user login count + audit slice
      GET  formats/list         → provider+, own billboard-format catalog
      POST formats/create       → provider+
      POST formats/delete       → provider+
-     GET  billboards/<id>/traffic → owner/admin+, collected traffic-engine data
+     GET  billboards/<id>/traffic → company/admin+, collected traffic-engine data
+     GET  customers/list, POST customers/create|update|delete → provider/agent+, own company's tenants
+     GET  customers/<id>/suggestions → provider/agent+, available billboards matching a tenant's categories
+     POST billboards/assign-customer → provider/agent+, tag a booked billboard to a customer
+     GET  favorites/mine, POST favorites/toggle → any signed-in user
+     GET  company/dashboard    → any company member, inventory/revenue/favorites stats
+     GET  company/customers-overview → provider/agent+, per-customer spend vs. budget
    ================================================================ */
 
 const PBKDF2_ITERATIONS = 100000; // lower to 50000 if you ever hit CPU limits on free tier
@@ -37,9 +55,12 @@ const MFA_PENDING_MINUTES = 5;
 const LOCKOUT_AFTER = 5;          // failed attempts
 const LOCKOUT_MINUTES = 15;
 const MIN_PASSWORD_LEN = 10;
-const MFA_REQUIRED_ROLES = ['provider', 'admin', 'superuser'];
-const ROLE_RANK = { user: 1, provider: 1, admin: 2, superuser: 3 };
-const PUBLISH_ROLES = ['provider', 'admin', 'superuser'];
+const MFA_REQUIRED_ROLES = ['provider', 'agent', 'admin', 'superuser'];
+const ROLE_RANK = { user: 1, provider: 1, agent: 1, admin: 2, superuser: 3 };
+const PUBLISH_ROLES = ['provider', 'admin', 'superuser']; // who can add brand-new billboards
+const MANAGE_INVENTORY_ROLES = ['provider', 'agent', 'admin', 'superuser']; // who can edit/tag a company's existing inventory
+const COMPANY_ROLES = ['provider', 'agent']; // roles that require a company at signup
+const EXPIRING_SOON_MS = 30 * 86400000; // booking_end within this window counts as "expiring soon" on the dashboard
 const CLAUDE_MODEL = 'claude-opus-4-8';
 const OWNER_NOTIFY_EMAIL = 'wenga212@gmail.com';
 
@@ -183,6 +204,7 @@ function safeUser(u, restricted) {
   return {
     id: u.id, email: u.email, name: u.name, role: u.role,
     companyName: u.company_name || null,
+    companyId: u.company_id || null,
     mfaEnabled: !!u.mfa_enabled,
     verified: !!u.verified,
     restricted: !!restricted,
@@ -351,7 +373,7 @@ function validEmail(e) { return typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s
 // Every billboard column EXCEPT image_data, which is far too big to ship in a
 // list payload. Listings expose `hasImage` and fetch the bytes separately from
 // GET billboards/<id>/image.
-const BB_LIST_COLS = `b.id, b.owner_id, b.title, b.area, b.description, b.lat, b.lng, b.size,
+const BB_LIST_COLS = `b.id, b.owner_id, b.company_id, b.customer_id, b.title, b.area, b.description, b.lat, b.lng, b.size,
   b.type, b.category, b.illuminated, b.price, b.traffic, b.peak_hours,
   b.audience_male, b.audience_female, b.audience_age, b.audience_income,
   b.availability, b.approval_state, b.rejection_note, b.reviewed_by, b.reviewed_at,
@@ -393,6 +415,8 @@ function bbRow(r) {
   return {
     id: r.id,
     ownerId: r.owner_id,
+    companyId: r.company_id || null,
+    customerId: r.customer_id || null,
     ownerName: r.owner_name || undefined,
     ownerCompany: r.owner_company || undefined,
     ownerEmail: r.owner_email || undefined,
@@ -443,6 +467,27 @@ function formatRow(r) {
     adDuration: r.ad_duration || null,
     createdAt: r.created_at
   };
+}
+function customerRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    name: r.name,
+    budget: r.budget != null ? r.budget : null,
+    notes: r.notes || null,
+    createdAt: r.created_at
+  };
+}
+function validateCustomer(c) {
+  if (!c || typeof c !== 'object') return 'Missing data.';
+  if (!c.name || String(c.name).trim().length < 2) return 'Please enter the customer name.';
+  if (String(c.name).length > 150) return 'Name is too long.';
+  if (c.budget !== undefined && c.budget !== null && c.budget !== '') {
+    const b = Number(c.budget);
+    if (!Number.isFinite(b) || b < 0) return 'Budget must be zero or more.';
+  }
+  return null;
 }
 function validateFormat(f) {
   if (!f || typeof f !== 'object') return 'Missing data.';
@@ -535,6 +580,11 @@ export async function onRequest(context) {
       return json({ needsBootstrap: row.n === 0 });
     }
 
+    if (path === 'auth/companies' && method === 'GET') {
+      const rows = await env.DB.prepare('SELECT id, name, type FROM companies ORDER BY name ASC').all();
+      return json({ companies: rows.results || [] });
+    }
+
     if (path === 'auth/bootstrap' && method === 'POST') {
       const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
       if (row.n > 0) return bad('Bootstrap is disabled — users already exist.', 403);
@@ -542,7 +592,7 @@ export async function onRequest(context) {
     }
 
     if (path === 'auth/register' && method === 'POST') {
-      const role = body.accountType === 'provider' ? 'provider' : 'user';
+      const role = body.accountType === 'provider' ? 'provider' : body.accountType === 'agent' ? 'agent' : 'user';
       return await register(env, request, body, role, 'register');
     }
 
@@ -586,10 +636,10 @@ export async function onRequest(context) {
     // Approved listings are visible to any signed-in user; drafts only to owner/admin.
     if (method === 'GET' && /^billboards\/[^/]+\/image$/.test(path)) {
       const bb = await env.DB.prepare(
-        'SELECT owner_id, approval_state, image_data FROM billboards WHERE id=?'
+        'SELECT owner_id, company_id, approval_state, image_data FROM billboards WHERE id=?'
       ).bind(path.split('/')[1]).first();
       if (!bb || !bb.image_data) return bad('No image for this listing', 404);
-      if (bb.approval_state !== 'approved' && bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) {
+      if (bb.approval_state !== 'approved' && bb.company_id !== me.company_id && ROLE_RANK[me.role] < ROLE_RANK.admin) {
         return bad('Not your billboard', 403);
       }
       const m = IMAGE_DATA_URL.exec(bb.image_data);
@@ -629,7 +679,7 @@ export async function onRequest(context) {
     if (path === 'admin/users' && method === 'GET') {
       if (ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Admin access required', 403);
       const rows = await env.DB.prepare(
-        'SELECT id,email,name,role,company_name,mfa_enabled,verified,last_login,created_at FROM users ORDER BY created_at ASC'
+        'SELECT id,email,name,role,company_name,company_id,mfa_enabled,verified,last_login,created_at FROM users ORDER BY created_at ASC'
       ).all();
       return json({ users: rows.results.map(u => safeUser(u, false)) });
     }
@@ -688,6 +738,54 @@ export async function onRequest(context) {
       return runAiEngine(env, me);
     }
 
+    /* ---------- superuser: companies ---------- */
+    if (path === 'admin/companies' && method === 'GET') {
+      if (me.role !== 'superuser') return bad('Superuser access required', 403);
+      const rows = await env.DB.prepare(
+        `SELECT c.id, c.name, c.type, c.created_at,
+                (SELECT COUNT(*) FROM users u WHERE u.company_id = c.id) AS memberCount,
+                (SELECT COUNT(*) FROM billboards b WHERE b.company_id = c.id) AS billboardCount,
+                (SELECT COUNT(*) FROM audit_log a JOIN users u2 ON u2.id = a.user_id
+                   WHERE u2.company_id = c.id AND a.action = 'login_ok') AS totalLogins
+         FROM companies c ORDER BY c.created_at DESC`
+      ).all();
+      return json({ companies: rows.results || [] });
+    }
+
+    if (path === 'admin/companies/create' && method === 'POST') {
+      if (me.role !== 'superuser') return bad('Superuser access required', 403);
+      const name = String(body.name || '').trim().slice(0, 150);
+      if (!name || name.length < 2) return bad('Please enter a company name.');
+      const type = body.type === 'agency' ? 'agency' : 'provider';
+      const existingCo = await env.DB.prepare('SELECT id FROM companies WHERE name=?').bind(name).first();
+      if (existingCo) return bad('A company with that name already exists.', 409);
+      const id = 'CO-' + shortId();
+      await env.DB.prepare('INSERT INTO companies (id, name, type, created_at) VALUES (?,?,?,?)')
+        .bind(id, name, type, Date.now()).run();
+      await audit(env, me.id, 'company_create', id + ' — ' + name);
+      return json({ company: { id, name, type } });
+    }
+
+    // Member list (with per-user login count, derived from audit_log —
+    // no separate counter column) + this company's slice of the audit log.
+    if (method === 'GET' && /^admin\/companies\/[^/]+$/.test(path)) {
+      if (me.role !== 'superuser') return bad('Superuser access required', 403);
+      const id = path.split('/')[2];
+      const co = await env.DB.prepare('SELECT * FROM companies WHERE id=?').bind(id).first();
+      if (!co) return bad('Company not found', 404);
+      const members = await env.DB.prepare(
+        `SELECT u.id, u.email, u.name, u.role, u.last_login,
+                (SELECT COUNT(*) FROM audit_log a WHERE a.user_id = u.id AND a.action = 'login_ok') AS loginCount
+         FROM users u WHERE u.company_id = ? ORDER BY u.created_at ASC`
+      ).bind(id).all();
+      const auditRows = await env.DB.prepare(
+        `SELECT a.id, a.action, a.detail, a.created_at, u.email
+         FROM audit_log a JOIN users u ON u.id = a.user_id
+         WHERE u.company_id = ? ORDER BY a.id DESC LIMIT 100`
+      ).bind(id).all();
+      return json({ company: co, members: members.results || [], audit: auditRows.results || [] });
+    }
+
     /* ================================================================
        BILLBOARDS MODULE
        ================================================================ */
@@ -729,17 +827,21 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
+    // Company-wide: every provider/agent in the signed-in user's company
+    // shares the same inventory, not just what they personally created.
     if (path === 'billboards/mine' && method === 'GET') {
-      if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to manage listings.', 403);
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required to manage listings.', 403);
+      if (!me.company_id) return bad('Your account isn\'t linked to a company yet — contact your admin.', 403);
       const rows = await env.DB.prepare(
-        `SELECT ${BB_LIST_COLS} FROM billboards b WHERE b.owner_id=? ORDER BY b.updated_at DESC`
-      ).bind(me.id).all();
+        `SELECT ${BB_LIST_COLS} FROM billboards b WHERE b.company_id=? ORDER BY b.updated_at DESC`
+      ).bind(me.company_id).all();
       return json({ billboards: (rows.results || []).map(bbRow) });
     }
 
-    // Owner: create a billboard (starts as draft)
+    // Provider (not agent): create a billboard (starts as draft), owned by their company
     if (path === 'billboards/create' && method === 'POST') {
       if (!PUBLISH_ROLES.includes(me.role)) return bad('A provider account is required to publish listings.', 403);
+      if (!me.company_id) return bad('Your account isn\'t linked to a company yet — contact your admin.', 403);
       const err = validateBillboard(body);
       if (err) return bad(err);
       const img = normalizeImage(body.imageData === undefined ? null : body.imageData);
@@ -749,13 +851,13 @@ export async function onRequest(context) {
       const cleanSources = normalizeDataSources(body.dataSources);
       await env.DB.prepare(
         `INSERT INTO billboards
-         (id, owner_id, title, area, description, lat, lng, size, type, category, illuminated,
+         (id, owner_id, company_id, title, area, description, lat, lng, size, type, category, illuminated,
           price, traffic, peak_hours, audience_male, audience_female, audience_age, audience_income,
           availability, approval_state, data_sources, image_data, format_id, building_name, resolution, ad_duration,
           booking_start, booking_end, facing, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
-        id, me.id, body.title.trim(), body.area.trim(), (body.description || '').trim(),
+        id, me.id, me.company_id, body.title.trim(), body.area.trim(), (body.description || '').trim(),
         Number(body.lat), Number(body.lng), body.size.trim(), body.type, body.category,
         body.illuminated ? 1 : 0,
         Math.max(0, Math.round(Number(body.price))),
@@ -787,9 +889,9 @@ export async function onRequest(context) {
     // populated by the standalone traffic-engine Worker (worker/), never written here.
     if (method === 'GET' && /^billboards\/[^/]+\/traffic$/.test(path)) {
       const id = path.split('/')[1];
-      const bb = await env.DB.prepare('SELECT owner_id, approval_state, ai_insights, ai_insights_updated_at FROM billboards WHERE id=?').bind(id).first();
+      const bb = await env.DB.prepare('SELECT owner_id, company_id, approval_state, ai_insights, ai_insights_updated_at FROM billboards WHERE id=?').bind(id).first();
       if (!bb) return bad('Billboard not found', 404);
-      if (bb.approval_state !== 'approved' && bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) {
+      if (bb.approval_state !== 'approved' && bb.company_id !== me.company_id && ROLE_RANK[me.role] < ROLE_RANK.admin) {
         return bad('Not your billboard', 403);
       }
       const rows = await env.DB.prepare(
@@ -819,21 +921,23 @@ export async function onRequest(context) {
       });
     }
 
-    // Get a single billboard (owner or admin+ only)
+    // Get a single billboard (company member or admin+ only)
     if (path.startsWith('billboards/') && method === 'GET' && !path.startsWith('billboards/mine') && !path.startsWith('billboards/pending') && !path.startsWith('billboards/all') && !path.endsWith('/traffic') && !path.endsWith('/image')) {
       const id = path.split('/')[1];
       const bb = await env.DB.prepare('SELECT * FROM billboards WHERE id=?').bind(id).first();
       if (!bb) return bad('Billboard not found', 404);
-      if (bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
+      if (bb.company_id !== me.company_id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
       return json({ billboard: bbRow(bb) });
     }
 
-    // Update a billboard (owner or admin+, editing an approved one flips it back to pending)
+    // Update a billboard (any company member, or admin+; editing an approved
+    // one flips it back to pending unless an admin is the one editing)
     if (path === 'billboards/update' && method === 'POST') {
-      const bb = await env.DB.prepare('SELECT owner_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required to manage listings.', 403);
+      const bb = await env.DB.prepare('SELECT owner_id, company_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
       if (!bb) return bad('Billboard not found', 404);
       const isAdmin = ROLE_RANK[me.role] >= ROLE_RANK.admin;
-      if (bb.owner_id !== me.id && !isAdmin) return bad('Not your billboard', 403);
+      if (bb.company_id !== me.company_id && !isAdmin) return bad('Not your company\'s billboard', 403);
       const err = validateBillboard(body);
       if (err) return bad(err);
       // Only touch image_data when the client actually sent the key: absent = keep
@@ -885,11 +989,12 @@ export async function onRequest(context) {
       return json({ billboard: bbRow(fresh) });
     }
 
-    // Owner submits a draft for review
+    // Company member submits a draft for review
     if (path === 'billboards/submit' && method === 'POST') {
-      const bb = await env.DB.prepare('SELECT owner_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required to manage listings.', 403);
+      const bb = await env.DB.prepare('SELECT owner_id, company_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
       if (!bb) return bad('Billboard not found', 404);
-      if (bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
+      if (bb.company_id !== me.company_id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
       if (bb.approval_state === 'approved') return bad('Already approved.');
       if (bb.approval_state === 'pending') return bad('Already awaiting review.');
       await env.DB.prepare('UPDATE billboards SET approval_state=?, rejection_note=NULL, updated_at=? WHERE id=?')
@@ -900,12 +1005,199 @@ export async function onRequest(context) {
 
     // Delete
     if (path === 'billboards/delete' && method === 'POST') {
-      const bb = await env.DB.prepare('SELECT owner_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required to manage listings.', 403);
+      const bb = await env.DB.prepare('SELECT owner_id, company_id, approval_state FROM billboards WHERE id=?').bind(body.id).first();
       if (!bb) return bad('Billboard not found', 404);
-      if (bb.owner_id !== me.id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
+      if (bb.company_id !== me.company_id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your billboard', 403);
       await env.DB.prepare('DELETE FROM billboards WHERE id=?').bind(body.id).run();
       await audit(env, me.id, 'billboard_delete', body.id);
       return json({ ok: true });
+    }
+
+    // Tag/untag a customer to a billboard (agents managing bookings for
+    // their clients). Both must belong to the signed-in user's company.
+    if (path === 'billboards/assign-customer' && method === 'POST') {
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required.', 403);
+      const bb = await env.DB.prepare('SELECT company_id FROM billboards WHERE id=?').bind(body.id).first();
+      if (!bb) return bad('Billboard not found', 404);
+      if (bb.company_id !== me.company_id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your company\'s billboard', 403);
+      let customerId = null;
+      if (body.customerId) {
+        const cust = await env.DB.prepare('SELECT id, company_id FROM customers WHERE id=?').bind(body.customerId).first();
+        if (!cust || cust.company_id !== bb.company_id) return bad('Invalid customer.', 400);
+        customerId = cust.id;
+      }
+      await env.DB.prepare('UPDATE billboards SET customer_id=?, updated_at=? WHERE id=?').bind(customerId, Date.now(), body.id).run();
+      await audit(env, me.id, 'billboard_assign_customer', body.id + (customerId ? ' → ' + customerId : ' (cleared)'));
+      return json({ ok: true });
+    }
+
+    /* ================================================================
+       CUSTOMERS MODULE (agent tenants, e.g. "Coca-Cola")
+       ================================================================ */
+    if (path === 'customers/list' && method === 'GET') {
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required.', 403);
+      if (!me.company_id) return bad('Your account isn\'t linked to a company yet.', 403);
+      const rows = await env.DB.prepare('SELECT * FROM customers WHERE company_id=? ORDER BY created_at DESC').bind(me.company_id).all();
+      return json({ customers: (rows.results || []).map(customerRow) });
+    }
+
+    if (path === 'customers/create' && method === 'POST') {
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required.', 403);
+      if (!me.company_id) return bad('Your account isn\'t linked to a company yet.', 403);
+      const err = validateCustomer(body);
+      if (err) return bad(err);
+      const id = 'CUST-' + shortId();
+      await env.DB.prepare(
+        'INSERT INTO customers (id, company_id, name, budget, notes, created_by, created_at) VALUES (?,?,?,?,?,?,?)'
+      ).bind(
+        id, me.company_id, String(body.name).trim(),
+        body.budget != null && body.budget !== '' ? Math.round(Number(body.budget)) : null,
+        String(body.notes || '').trim().slice(0, 500) || null,
+        me.id, Date.now()
+      ).run();
+      await audit(env, me.id, 'customer_create', id + ' — ' + body.name);
+      const fresh = await env.DB.prepare('SELECT * FROM customers WHERE id=?').bind(id).first();
+      return json({ customer: customerRow(fresh) });
+    }
+
+    if (path === 'customers/update' && method === 'POST') {
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required.', 403);
+      const cust = await env.DB.prepare('SELECT company_id FROM customers WHERE id=?').bind(body.id).first();
+      if (!cust) return bad('Customer not found', 404);
+      if (cust.company_id !== me.company_id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your company\'s customer', 403);
+      const err = validateCustomer(body);
+      if (err) return bad(err);
+      await env.DB.prepare('UPDATE customers SET name=?, budget=?, notes=? WHERE id=?').bind(
+        String(body.name).trim(),
+        body.budget != null && body.budget !== '' ? Math.round(Number(body.budget)) : null,
+        String(body.notes || '').trim().slice(0, 500) || null,
+        body.id
+      ).run();
+      const fresh = await env.DB.prepare('SELECT * FROM customers WHERE id=?').bind(body.id).first();
+      return json({ customer: customerRow(fresh) });
+    }
+
+    if (path === 'customers/delete' && method === 'POST') {
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required.', 403);
+      const cust = await env.DB.prepare('SELECT company_id FROM customers WHERE id=?').bind(body.id).first();
+      if (!cust) return bad('Customer not found', 404);
+      if (cust.company_id !== me.company_id && ROLE_RANK[me.role] < ROLE_RANK.admin) return bad('Not your company\'s customer', 403);
+      // Explicit clear rather than relying on an ON DELETE SET NULL FK
+      // action — billboards.customer_id was added without one, so this is
+      // the reliable way to avoid a dangling/rejected delete either way.
+      await env.DB.prepare('UPDATE billboards SET customer_id=NULL WHERE customer_id=?').bind(body.id).run();
+      await env.DB.prepare('DELETE FROM customers WHERE id=?').bind(body.id).run();
+      await audit(env, me.id, 'customer_delete', body.id);
+      return json({ ok: true });
+    }
+
+    // Simple heuristic — top available company billboards sharing a
+    // category with what this customer already has booked. Not ML, just a
+    // first pass so an agent has somewhere to start.
+    if (method === 'GET' && /^customers\/[^/]+\/suggestions$/.test(path)) {
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required.', 403);
+      const custId = path.split('/')[1];
+      const cust = await env.DB.prepare('SELECT company_id FROM customers WHERE id=?').bind(custId).first();
+      if (!cust || cust.company_id !== me.company_id) return bad('Customer not found', 404);
+      const catRows = await env.DB.prepare(
+        'SELECT DISTINCT category FROM billboards WHERE customer_id=? AND company_id=?'
+      ).bind(custId, me.company_id).all();
+      const categories = (catRows.results || []).map(r => r.category);
+      if (!categories.length) return json({ suggestions: [] });
+      const placeholders = categories.map(() => '?').join(',');
+      const rows = await env.DB.prepare(
+        `SELECT ${BB_LIST_COLS} FROM billboards b WHERE b.company_id=? AND b.availability='available' AND b.category IN (${placeholders}) LIMIT 10`
+      ).bind(me.company_id, ...categories).all();
+      return json({ suggestions: (rows.results || []).map(bbRow) });
+    }
+
+    /* ================================================================
+       FAVORITES (any signed-in user)
+       ================================================================ */
+    if (path === 'favorites/mine' && method === 'GET') {
+      const rows = await env.DB.prepare('SELECT billboard_id FROM favorites WHERE user_id=?').bind(me.id).all();
+      return json({ billboardIds: (rows.results || []).map(r => r.billboard_id) });
+    }
+
+    if (path === 'favorites/toggle' && method === 'POST') {
+      const billboardId = String(body.billboardId || '');
+      if (!billboardId) return bad('Missing billboardId.');
+      const bb = await env.DB.prepare('SELECT id FROM billboards WHERE id=?').bind(billboardId).first();
+      if (!bb) return bad('Billboard not found', 404);
+      const existingFav = await env.DB.prepare('SELECT 1 FROM favorites WHERE user_id=? AND billboard_id=?').bind(me.id, billboardId).first();
+      if (existingFav) {
+        await env.DB.prepare('DELETE FROM favorites WHERE user_id=? AND billboard_id=?').bind(me.id, billboardId).run();
+        return json({ favorited: false });
+      }
+      await env.DB.prepare('INSERT INTO favorites (user_id, billboard_id, created_at) VALUES (?,?,?)').bind(me.id, billboardId, Date.now()).run();
+      return json({ favorited: true });
+    }
+
+    /* ================================================================
+       COMPANY DASHBOARDS
+       ================================================================ */
+    // Inventory/revenue/favorites snapshot for the signed-in user's whole
+    // company — the numbers behind the stat tiles + pie chart on dashboard.html.
+    if (path === 'company/dashboard' && method === 'GET') {
+      if (!me.company_id) return bad('Your account isn\'t linked to a company yet.', 403);
+      const totals = await env.DB.prepare(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN availability='booked' THEN 1 ELSE 0 END) AS booked,
+           SUM(CASE WHEN availability='available' THEN 1 ELSE 0 END) AS available,
+           SUM(CASE WHEN availability='pending' THEN 1 ELSE 0 END) AS pendingAvailability,
+           SUM(CASE WHEN availability='booked' THEN price ELSE 0 END) AS revenue,
+           SUM(CASE WHEN availability='booked' AND booking_end IS NOT NULL AND booking_end <= ? THEN 1 ELSE 0 END) AS expiringSoon
+         FROM billboards WHERE company_id=?`
+      ).bind(Date.now() + EXPIRING_SOON_MS, me.company_id).first();
+      const favRow = await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM favorites f JOIN billboards b ON b.id=f.billboard_id WHERE b.company_id=?`
+      ).bind(me.company_id).first();
+      const approvalRow = await env.DB.prepare(
+        `SELECT
+           SUM(CASE WHEN approval_state='approved' THEN 1 ELSE 0 END) AS approved,
+           SUM(CASE WHEN approval_state='pending' THEN 1 ELSE 0 END) AS pending,
+           SUM(CASE WHEN approval_state='draft' THEN 1 ELSE 0 END) AS draft,
+           SUM(CASE WHEN approval_state='rejected' THEN 1 ELSE 0 END) AS rejected
+         FROM billboards WHERE company_id=?`
+      ).bind(me.company_id).first();
+      return json({
+        total: totals.total || 0,
+        booked: totals.booked || 0,
+        available: totals.available || 0,
+        pendingAvailability: totals.pendingAvailability || 0,
+        revenue: totals.revenue || 0,
+        expiringSoon: totals.expiringSoon || 0,
+        totalFavorites: favRow.n || 0,
+        approvalBreakdown: {
+          approved: approvalRow.approved || 0,
+          pending: approvalRow.pending || 0,
+          draft: approvalRow.draft || 0,
+          rejected: approvalRow.rejected || 0
+        }
+      });
+    }
+
+    // Agent view: per-customer active-billboard count, spend, and budget
+    // headroom (informational only — nothing here blocks a booking).
+    if (path === 'company/customers-overview' && method === 'GET') {
+      if (!MANAGE_INVENTORY_ROLES.includes(me.role)) return bad('A provider or agent account is required.', 403);
+      if (!me.company_id) return bad('Your account isn\'t linked to a company yet.', 403);
+      const rows = await env.DB.prepare(
+        `SELECT c.id, c.name, c.budget, c.notes, c.created_at,
+                COUNT(b.id) AS activeBillboardCount, COALESCE(SUM(b.price), 0) AS spend
+         FROM customers c
+         LEFT JOIN billboards b ON b.customer_id = c.id AND b.availability = 'booked'
+         WHERE c.company_id = ?
+         GROUP BY c.id ORDER BY c.created_at DESC`
+      ).bind(me.company_id).all();
+      const list = (rows.results || []).map(r => ({
+        id: r.id, name: r.name, budget: r.budget != null ? r.budget : null, notes: r.notes || null, createdAt: r.created_at,
+        activeBillboardCount: r.activeBillboardCount, spend: r.spend,
+        remaining: r.budget != null ? r.budget - r.spend : null
+      }));
+      return json({ customers: list });
     }
 
     /* ---------- admin: billboard review ---------- */
@@ -978,25 +1270,55 @@ export async function onRequest(context) {
 /* ================================================================
    FLOWS
    ================================================================ */
+// Resolves the company for a provider/agent signup: either joins an
+// existing one (body.companyId, picked from GET auth/companies) or
+// creates a new one (body.newCompanyName [+ newCompanyType]). Returns
+// { companyId, companyName } or { error }. Called only after the
+// duplicate-email check in register() so a failed signup doesn't leave an
+// orphan company behind (D1/Workers has no cheap cross-statement
+// transaction here, same non-atomic style as the rest of this file).
+async function resolveCompany(env, body) {
+  if (body.companyId) {
+    const co = await env.DB.prepare('SELECT id, name FROM companies WHERE id=?').bind(body.companyId).first();
+    if (!co) return { error: 'Selected company not found — refresh and try again.' };
+    return { companyId: co.id, companyName: co.name };
+  }
+  const newName = String(body.newCompanyName || '').trim().slice(0, 150);
+  if (!newName || newName.length < 2) return { error: 'Please select your company, or enter a new company name.' };
+  const type = body.newCompanyType === 'agency' ? 'agency' : 'provider';
+  const existingCo = await env.DB.prepare('SELECT id FROM companies WHERE name=?').bind(newName).first();
+  if (existingCo) return { error: 'That company name is already registered — select it from the list instead.' };
+  const id = 'CO-' + shortId();
+  await env.DB.prepare('INSERT INTO companies (id, name, type, created_at) VALUES (?,?,?,?)')
+    .bind(id, newName, type, Date.now()).run();
+  return { companyId: id, companyName: newName };
+}
+
 async function register(env, request, body, role, auditAction) {
   const email = String(body.email || '').trim().toLowerCase();
   const name = String(body.name || '').trim().slice(0, 100);
   const password = String(body.password || '');
-  const companyName = role === 'provider' ? String(body.companyName || '').trim().slice(0, 150) : null;
   if (!validEmail(email)) return bad('Please enter a valid email address.');
   if (!name) return bad('Please enter your name.');
-  if (role === 'provider' && !companyName) return bad('Please enter your company name.');
   if (password.length < MIN_PASSWORD_LEN) return bad('Password must be at least ' + MIN_PASSWORD_LEN + ' characters.');
 
   const existing = await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first();
   if (existing) return bad('That email is already registered.', 409);
 
+  let companyId = null, companyName = null;
+  if (COMPANY_ROLES.includes(role)) {
+    const co = await resolveCompany(env, body);
+    if (co.error) return bad(co.error);
+    companyId = co.companyId;
+    companyName = co.companyName;
+  }
+
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO users (id,email,name,role,company_name,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?,?,?)'
-  ).bind(id, email, name, role, companyName, hash, salt, Date.now()).run();
-  await audit(env, id, auditAction, email + ' (' + role + ')');
+    'INSERT INTO users (id,email,name,role,company_name,company_id,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?,?,?,?)'
+  ).bind(id, email, name, role, companyName, companyId, hash, salt, Date.now()).run();
+  await audit(env, id, auditAction, email + ' (' + role + ')' + (companyName ? ' @ ' + companyName : ''));
   await notifyOwnerOfNewAccount(env, { email, name, role, companyName });
 
   // Sign them straight in. MFA-mandatory roles get a restricted session.

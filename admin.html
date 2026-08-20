@@ -82,6 +82,21 @@
   }
   .role.user { background:var(--green-bg); color:var(--green); }
   .role.provider { background:rgba(95,122,0,.14); color:var(--accent-text); }
+  .role.agent { background:rgba(95,122,0,.14); color:var(--accent-text); }
+  .co-type { font-family:'JetBrains Mono',monospace; font-size:9px; padding:4px 8px; letter-spacing:1.5px; text-transform:uppercase; border-radius:2px; background:var(--panel-2); color:var(--muted); }
+  .co-name { font-weight:600; cursor:pointer; }
+  .co-name:hover { color:var(--accent-text); }
+  .co-new-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line); }
+  .co-new-row input { background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:9px 10px; font-family:'DM Sans',sans-serif; font-size:13px; flex:1; min-width:180px; }
+  .co-new-row select { background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:9px 10px; font-family:'DM Sans',sans-serif; font-size:13px; }
+  .co-new-row .btn-run { padding:9px 14px; }
+  .co-detail { display:none; padding:16px 20px; border-top:1px solid var(--line); }
+  .co-detail.show { display:block; }
+  .co-detail h3 { font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:1px; font-weight:400; margin-bottom:10px; }
+  .co-members { list-style:none; margin-bottom:16px; }
+  .co-members li { padding:8px 0; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; font-size:12px; }
+  .co-members li:last-child { border-bottom:none; }
+  .co-login-count { font-family:'JetBrains Mono',monospace; color:var(--muted); font-size:11px; margin-left:auto; }
   .role.admin { background:var(--amber-bg); color:var(--amber); }
   .role.superuser { background:var(--red-bg); color:var(--red); }
   select.role-set {
@@ -166,7 +181,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.22</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.23</span></a>
   <div class="breadcrumb">CONSOLE / <span>USERS &amp; ROLES</span></div>
   <div class="top-actions">
     <span class="pill" id="whoami" style="cursor:default"></span>
@@ -193,6 +208,29 @@
       <tbody id="rows"></tbody>
     </table>
   </div>
+
+  <section id="companies-section" class="hidden">
+    <h2>COMPANIES</h2>
+    <div class="sub">Registered provider &amp; agency companies — members, inventory, and total logins per company.</div>
+    <div class="panel">
+      <div class="co-new-row">
+        <input id="co-new-name" placeholder="New company name" />
+        <select id="co-new-type"><option value="provider">Provider</option><option value="agency">Agency</option></select>
+        <button class="btn-run" id="coCreateBtn">Add Company</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Company</th><th>Type</th><th>Members</th><th>Billboards</th><th>Total Logins</th></tr>
+        </thead>
+        <tbody id="co-rows"></tbody>
+      </table>
+      <div class="co-detail" id="co-detail">
+        <h3 id="co-detail-title"></h3>
+        <ul class="co-members" id="co-detail-members"></ul>
+        <ul class="audit" id="co-detail-audit"></ul>
+      </div>
+    </div>
+  </section>
 
   <section id="ai-engine-section" class="hidden">
     <h2>AI TRAFFIC ENGINE</h2>
@@ -284,6 +322,8 @@ function gate(title, msg, showBtn) {
     if (me.role !== 'superuser') $('users-sub').textContent = 'All registered accounts. Sign in as a superuser to change roles or delete users.';
     await loadUsers();
     if (me.role === 'superuser') {
+      $('companies-section').classList.remove('hidden');
+      await loadCompanies();
       $('audit-section').classList.remove('hidden');
       await loadAudit();
       $('ai-engine-section').classList.remove('hidden');
@@ -308,7 +348,7 @@ async function loadUsers() {
   $('rows').innerHTML = d.users.map(u => {
     const roleCell = superMode
       ? '<select class="role-set" data-id="' + u.id + '">' +
-          ['user', 'provider', 'admin', 'superuser'].map(r =>
+          ['user', 'provider', 'agent', 'admin', 'superuser'].map(r =>
             '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>').join('') +
         '</select>'
       : '<span class="role ' + u.role + '">' + u.role + '</span>';
@@ -351,6 +391,52 @@ async function loadAudit() {
     '<span class="a-who">' + esc(ev.email || 'system') + ' · ' + fmtTime(ev.created_at) + '</span></li>'
   ).join('') || '<li><span class="a-det" style="color:var(--muted)">No events yet.</span></li>';
 }
+
+async function loadCompanies() {
+  const d = await api('admin/companies');
+  $('co-rows').innerHTML = (d.companies || []).map(c =>
+    '<tr>' +
+      '<td><span class="co-name" data-co="' + c.id + '">' + esc(c.name) + '</span></td>' +
+      '<td><span class="co-type">' + esc(c.type) + '</span></td>' +
+      '<td>' + c.memberCount + '</td>' +
+      '<td>' + c.billboardCount + '</td>' +
+      '<td>' + c.totalLogins + '</td>' +
+    '</tr>'
+  ).join('') || '<tr><td colspan="5" style="color:var(--muted)">No companies yet.</td></tr>';
+
+  document.querySelectorAll('.co-name').forEach(el => el.addEventListener('click', () => loadCompanyDetail(el.dataset.co, el.textContent)));
+}
+
+async function loadCompanyDetail(id, name) {
+  const detail = $('co-detail');
+  detail.classList.add('show');
+  $('co-detail-title').textContent = name;
+  $('co-detail-members').innerHTML = '<li>Loading…</li>';
+  $('co-detail-audit').innerHTML = '';
+  try {
+    const d = await api('admin/companies/' + id);
+    $('co-detail-members').innerHTML = (d.members || []).map(m =>
+      '<li><span class="role ' + m.role + '">' + m.role + '</span> ' + esc(m.name) + ' <span class="u-email">' + esc(m.email) + '</span>' +
+      '<span class="co-login-count">' + m.loginCount + ' login' + (m.loginCount === 1 ? '' : 's') + ' · last ' + fmtTime(m.last_login) + '</span></li>'
+    ).join('') || '<li style="color:var(--muted)">No members yet.</li>';
+    $('co-detail-audit').innerHTML = (d.audit || []).map(ev =>
+      '<li><span class="a-act">' + esc(ev.action) + '</span>' +
+      '<span class="a-det">' + esc(ev.detail || '') + '</span>' +
+      '<span class="a-who">' + esc(ev.email || 'system') + ' · ' + fmtTime(ev.created_at) + '</span></li>'
+    ).join('') || '<li><span class="a-det" style="color:var(--muted)">No audit events for this company yet.</span></li>';
+  } catch (e) { toast(e.message); }
+}
+
+$('coCreateBtn').addEventListener('click', async () => {
+  const name = $('co-new-name').value.trim();
+  if (!name) { toast('Enter a company name first.'); return; }
+  try {
+    await api('admin/companies/create', { name, type: $('co-new-type').value });
+    $('co-new-name').value = '';
+    toast('Company added');
+    await loadCompanies();
+  } catch (e) { toast(e.message); }
+});
 
 async function loadAiEngineStatus() {
   try {

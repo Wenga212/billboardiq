@@ -592,7 +592,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.22</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.23</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -622,6 +622,7 @@
   <div class="tabs" id="viewTabs">
     <button class="tab active" data-view="overview">Overview</button>
     <button class="tab" data-view="mine">My Billboards <span class="count" id="cnt-mine">0</span></button>
+    <button class="tab hidden" data-view="customers" id="tab-customers">Customers <span class="count" id="cnt-customers">0</span></button>
     <button class="tab hidden" data-view="pending" id="tab-pending">Review Queue <span class="count" id="cnt-pending">0</span></button>
     <button class="tab hidden" data-view="approved" id="tab-approved">Approved <span class="count" id="cnt-approved">0</span></button>
     <button class="tab hidden" data-view="rejected" id="tab-rejected">Rejected <span class="count" id="cnt-rejected">0</span></button>
@@ -629,6 +630,7 @@
   </div>
 
   <div id="overviewPane"></div>
+  <div id="customersPane" class="hidden"></div>
   <div id="grid" class="grid hidden"></div>
 </main>
 
@@ -895,6 +897,10 @@ let myFormats = [];           // signed-in provider's own billboard-format catal
 let formatsLoaded = false;
 let legacyFormatOption = null; // { size, buildingName, resolution, adDuration } — kept when editing a listing whose size predates the catalog
 let areaAutocomplete = null;  // google.maps.places.Autocomplete, wired once
+let customersList = [];       // company's customer tenants (agent module)
+let customersById = {};
+let customersLoaded = false;
+let companyStats = null;      // GET company/dashboard — currently just backs the Total Favorites KPI tile
 
 /* ---------------- theme ---------------- */
 $('themeBtn').addEventListener('click', () => {
@@ -950,6 +956,20 @@ async function loadFormats() {
     formatsLoaded = true;
   } catch (e) {
     myFormats = [];
+  }
+}
+
+/* ---------------- customer tenants (agent module) ---------------- */
+async function loadCustomers(force) {
+  if (customersLoaded && !force) return;
+  try {
+    const r = await api('customers/list');
+    customersList = r.customers || [];
+    customersById = {};
+    customersList.forEach(c => { customersById[c.id] = c; });
+    customersLoaded = true;
+  } catch (e) {
+    customersList = []; customersById = {};
   }
 }
 
@@ -1378,14 +1398,30 @@ function hydrateSources(ds) {
     if (me.role === 'admin' || me.role === 'superuser') {
       ['tab-pending', 'tab-approved', 'tab-rejected', 'tab-all'].forEach(id => $(id).classList.remove('hidden'));
     }
-
+    // Customers tab: agents manage tenants directly; admins/superusers can
+    // audit any company's. Providers don't create billboards for clients
+    // they don't own, so it stays out of their nav.
+    if (me.role === 'agent' || me.role === 'admin' || me.role === 'superuser') {
+      $('tab-customers').classList.remove('hidden');
+    }
     // Landing on the dashboard counts as "home" for this browser session —
     // a later click on "Map" shouldn't get bounced straight back here.
     try { sessionStorage.setItem('bbiq-home-routed', '1'); } catch (e) {}
 
     wireSourceCheckboxes();
     await refresh();
-    switchView('overview');
+
+    // Deep link from the public map's "Edit" button (index.html) —
+    // ?edit=<billboardId> jumps straight into that listing's edit form
+    // instead of duplicating a second edit UI inside the map page.
+    const deepLinkId = new URLSearchParams(location.search).get('edit');
+    const deepLinkBb = deepLinkId && allData.mine.find(b => b.id === deepLinkId);
+    if (deepLinkBb) {
+      switchView('mine');
+      openEdit(deepLinkBb);
+    } else {
+      switchView('overview');
+    }
   } catch (e) {
     if (e.status === 401) { location.href = 'login.html'; return; }
     gate('CONNECTION ERROR', "Couldn't verify your session — check your connection and reload.");
@@ -1409,6 +1445,7 @@ async function refresh() {
     const mine = await api('billboards/mine');
     allData.mine = mine.billboards;
     $('cnt-mine').textContent = allData.mine.length;
+    companyStats = await api('company/dashboard').catch(() => null);
 
     // Admins also fetch queues
     if (me.role === 'admin' || me.role === 'superuser') {
@@ -1436,6 +1473,7 @@ async function refresh() {
 const VIEW_META = {
   overview: { title: 'OVERVIEW', sub: 'Your inventory, utilization, and revenue at a glance.', crumb: 'OVERVIEW' },
   mine: { title: 'MY BILLBOARDS', sub: 'Manage your listings, submit for review, track approvals.', crumb: 'MY BILLBOARDS' },
+  customers: { title: 'CUSTOMERS', sub: 'Track each client\'s active billboards, spend, and remaining budget.', crumb: 'CUSTOMERS' },
   pending: { title: 'REVIEW QUEUE', sub: 'Billboards awaiting your approval. Review carefully — approved listings go live on the public map.', crumb: 'REVIEW QUEUE' },
   approved: { title: 'APPROVED LISTINGS', sub: 'All live billboards across every owner.', crumb: 'APPROVED' },
   rejected: { title: 'REJECTED LISTINGS', sub: 'Sent back to owners with a note. Awaiting resubmission.', crumb: 'REJECTED' },
@@ -1451,17 +1489,21 @@ function switchView(v) {
     ? 'Platform-wide inventory, utilization, and revenue across every provider.'
     : meta.sub;
   $('crumb').textContent = meta.crumb;
-  // Only "mine" shows the Add button; other views are read-only or admin-oriented
-  $('addBtn').classList.toggle('hidden', v !== 'mine');
+  // Only "mine" shows the Add button, and only for roles that can create new
+  // billboards (agents manage existing inventory, not add new listings).
+  $('addBtn').classList.toggle('hidden', v !== 'mine' || me.role === 'agent');
   renderList();
 }
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
 
 function renderList() {
   const isOverview = currentView === 'overview';
+  const isCustomers = currentView === 'customers';
   $('overviewPane').classList.toggle('hidden', !isOverview);
-  $('grid').classList.toggle('hidden', isOverview);
+  $('customersPane').classList.toggle('hidden', !isCustomers);
+  $('grid').classList.toggle('hidden', isOverview || isCustomers);
   if (isOverview) { renderOverview(); return; }
+  if (isCustomers) { renderCustomersPane(); return; }
 
   const list = allData[currentView] || [];
   const grid = $('grid');
@@ -1597,6 +1639,7 @@ function renderOvSummary(d) {
       <div class="kpi-tile"><div class="kpi-label">Booked revenue <small>/mo</small></div><div class="kpi-value">${fmtMoney(d.bookedRevenue)}</div></div>
       <div class="kpi-tile"><div class="kpi-label">Potential revenue <small>/mo</small></div><div class="kpi-value">${fmtMoney(d.potentialRevenue)}</div></div>
       <div class="kpi-tile ${d.expiring.length ? 'warn' : ''}"><div class="kpi-label">Expiring in 30 days</div><div class="kpi-value">${d.expiring.length}</div></div>
+      ${!d.isAdmin && companyStats ? `<div class="kpi-tile"><div class="kpi-label">Total favorites <small>public map</small></div><div class="kpi-value">${companyStats.totalFavorites}</div></div>` : ''}
     </div>
     <div class="ov-section">
       <h3>Utilization</h3>
@@ -1958,13 +2001,16 @@ function renderOverview() {
 
 function cardHTML(b, i) {
   const isAdmin = me.role === 'admin' || me.role === 'superuser';
-  const isMine = b.ownerId === me.id;
+  // Billboards are company-shared (schema/008) — any teammate in the same
+  // company can edit/submit/delete a listing, not just whoever created it.
+  const isMine = !!me.companyId && b.companyId === me.companyId;
   const canEdit = isMine || isAdmin;
   const canDelete = isMine || isAdmin;
   const canSubmit = isMine && (b.approvalState === 'draft' || b.approvalState === 'rejected');
   const canApprove = isAdmin && b.approvalState === 'pending';
   const canReject = isAdmin && b.approvalState === 'pending';
   const canViewTraffic = (isMine || isAdmin) && b.approvalState === 'approved';
+  const canAssignCustomer = me.role === 'agent' && isMine && b.availability === 'booked';
 
   const ownerLine = (currentView !== 'mine' && b.ownerName)
     ? `<div class="bb-owner">OWNER: <b>${esc(b.ownerName)}</b> · ${esc(b.ownerEmail || '')}</div>` : '';
@@ -1984,6 +2030,7 @@ function cardHTML(b, i) {
       </div>
       <div class="bb-meta">
         <span class="availability ${b.availability}">${b.availability}</span>
+        ${b.customerId && customersById[b.customerId] ? `<span class="list-badge neutral">CUSTOMER: ${esc(customersById[b.customerId].name)}</span>` : ''}
       </div>
       ${rejBlock}
       <div class="bb-specs">
@@ -1997,6 +2044,7 @@ function cardHTML(b, i) {
         ${canSubmit ? `<button class="btn sm" data-action="submit" data-id="${b.id}">Submit for Review</button>` : ''}
         ${canApprove ? `<button class="btn sm" data-action="approve" data-id="${b.id}">Approve</button>` : ''}
         ${canReject ? `<button class="btn danger sm" data-action="reject" data-id="${b.id}">Reject</button>` : ''}
+        ${canAssignCustomer ? `<button class="btn ghost sm" data-action="assign-customer" data-id="${b.id}">${b.customerId ? 'Change' : 'Assign'} Customer</button>` : ''}
         ${canDelete ? `<button class="btn ghost sm" data-action="delete" data-id="${b.id}">Delete</button>` : ''}
       </div>
     </div>`;
@@ -2036,6 +2084,19 @@ async function handleAction(action, id) {
       setTimeout(() => $('rejectNote').focus(), 60);
       return;
     }
+    if (action === 'assign-customer') {
+      await loadCustomers();
+      if (!customersList.length) { toast('Add a customer first, from the Customers tab.'); return; }
+      const options = customersList.map(c => c.name).join(', ');
+      const name = prompt('Assign which customer? (' + options + ')\nLeave blank to clear.', customersById[b.customerId] ? customersById[b.customerId].name : '');
+      if (name === null) return;
+      const match = customersList.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+      if (name.trim() && !match) { toast('No customer named "' + name + '" — check the Customers tab.'); return; }
+      await api('billboards/assign-customer', { id, customerId: match ? match.id : null });
+      toast(match ? 'Assigned to ' + match.name : 'Cleared customer');
+      await refresh();
+      return;
+    }
   } catch (e) {
     toast(e.message);
   }
@@ -2046,6 +2107,106 @@ function findBillboard(id) {
     if (found) return found;
   }
   return null;
+}
+
+/* ---------------- customers pane (agent module) ---------------- */
+async function renderCustomersPane() {
+  const pane = $('customersPane');
+  pane.innerHTML = '<div class="ov-section"><p style="color:var(--muted)">Loading customers…</p></div>';
+  try {
+    const [overview] = await Promise.all([api('company/customers-overview'), loadCustomers(true)]);
+    $('cnt-customers').textContent = customersList.length;
+    const rows = overview.customers || [];
+    const cards = rows.map(c => {
+      const pct = c.budget ? Math.min(100, Math.round((c.spend / c.budget) * 100)) : null;
+      const remainingText = c.budget != null ? fmtMoney(c.remaining) + ' left of ' + fmtMoney(c.budget) : 'No budget set';
+      const spendBar = c.budget != null
+        ? `<div class="bar-row">
+             <span class="bar-label">Spend</span>
+             <div class="bar-track"><div class="bar-fill ${pct >= 100 ? 'accent' : 'blue'}" style="width:${Math.max(4, pct)}%"></div></div>
+             <span class="bar-value">${fmtMoney(c.spend)}</span>
+           </div>`
+        : statStrip([{ label: 'Spend', value: fmtMoney(c.spend) }]);
+      return `
+        <div class="ov-section">
+          <h3>${esc(c.name)} <small>${c.activeBillboardCount} active billboard${c.activeBillboardCount === 1 ? '' : 's'}</small></h3>
+          ${spendBar}
+          <div class="sub" style="margin-top:8px">${esc(remainingText)}${c.notes ? ' · ' + esc(c.notes) : ''}</div>
+          <div class="bb-actions" style="margin-top:12px">
+            <button class="btn ghost sm" data-cust-action="suggest" data-id="${c.id}">Suggestions</button>
+            <button class="btn ghost sm" data-cust-action="edit" data-id="${c.id}">Edit</button>
+            <button class="btn ghost sm" data-cust-action="delete" data-id="${c.id}">Delete</button>
+          </div>
+          <div id="cust-suggest-${c.id}"></div>
+        </div>`;
+    }).join('') || '<div class="ov-section"><p style="color:var(--muted)">No customers yet — add your first client below.</p></div>';
+
+    pane.innerHTML = `
+      <div class="ov-section">
+        <h3>Add Customer</h3>
+        <div class="form-row">
+          <div><label>Name *</label><input id="cust-new-name" placeholder="e.g. Coca-Cola" /></div>
+          <div><label>Budget <small style="text-transform:none">(optional, LKR/mo)</small></label><input id="cust-new-budget" type="number" min="0" /></div>
+        </div>
+        <label>Notes</label><input id="cust-new-notes" placeholder="Optional" />
+        <button class="btn sm" id="custCreateBtn" style="margin-top:12px">+ Add Customer</button>
+      </div>
+      ${cards}
+    `;
+
+    $('custCreateBtn').addEventListener('click', async () => {
+      const name = $('cust-new-name').value.trim();
+      if (!name) { toast('Enter a customer name.'); return; }
+      try {
+        await api('customers/create', { name, budget: $('cust-new-budget').value || null, notes: $('cust-new-notes').value });
+        toast('Customer added');
+        customersLoaded = false;
+        await renderCustomersPane();
+      } catch (e) { toast(e.message); }
+    });
+
+    pane.querySelectorAll('[data-cust-action]').forEach(btn =>
+      btn.addEventListener('click', () => handleCustomerAction(btn.dataset.custAction, btn.dataset.id)));
+  } catch (e) {
+    pane.innerHTML = '<div class="ov-section"><p style="color:var(--red)">' + esc(e.message) + '</p></div>';
+  }
+}
+
+async function handleCustomerAction(action, id) {
+  const c = customersById[id];
+  if (!c) return;
+  try {
+    if (action === 'suggest') {
+      const box = $('cust-suggest-' + id);
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      box.innerHTML = '<p style="color:var(--muted); margin-top:8px; font-size:12px">Loading suggestions…</p>';
+      const r = await api('customers/' + id + '/suggestions');
+      const list = r.suggestions || [];
+      box.innerHTML = list.length
+        ? '<div class="list-rows" style="margin-top:8px">' + list.map(b => listRow(b.title, b.area, b.availability, null, 'neutral')).join('') + '</div>'
+        : '<p style="color:var(--muted); margin-top:8px; font-size:12px">No matching available billboards yet — assign this customer to a booked listing first so we know what they like.</p>';
+      return;
+    }
+    if (action === 'edit') {
+      const name = prompt('Customer name', c.name);
+      if (name === null) return;
+      const budget = prompt('Budget (LKR/mo, blank for none)', c.budget != null ? c.budget : '');
+      if (budget === null) return;
+      await api('customers/update', { id, name: name.trim(), budget: budget.trim() || null, notes: c.notes || '' });
+      toast('Customer updated');
+      customersLoaded = false;
+      await renderCustomersPane();
+      return;
+    }
+    if (action === 'delete') {
+      if (!confirm('Delete "' + c.name + '"? Billboards tagged to them will be untagged.')) return;
+      await api('customers/delete', { id });
+      toast('Customer deleted');
+      customersLoaded = false;
+      await renderCustomersPane();
+      return;
+    }
+  } catch (e) { toast(e.message); }
 }
 
 /* ---------------- modal: add/edit ---------------- */
