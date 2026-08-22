@@ -36,7 +36,8 @@
                                   queued pending_snapshots with Claude vision
      GET  admin/companies      → superuser, company list + aggregate stats
      POST admin/companies/create → superuser, pre-onboard a company
-     GET  admin/companies/<id> → superuser, members + per-user login count + audit slice
+     GET  admin/companies/<id> → superuser, members + per-user login count + audit slice + inventory/revenue stats
+     GET  admin/stats/overview → superuser, platform-wide aggregates for the console's live dashboard charts
      GET  formats/list         → provider+, own billboard-format catalog
      POST formats/create       → provider+
      POST formats/delete       → provider+
@@ -783,7 +784,62 @@ export async function onRequest(context) {
          FROM audit_log a JOIN users u ON u.id = a.user_id
          WHERE u.company_id = ? ORDER BY a.id DESC LIMIT 100`
       ).bind(id).all();
-      return json({ company: co, members: members.results || [], audit: auditRows.results || [] });
+      return json({ company: co, members: members.results || [], audit: auditRows.results || [], stats: await computeCompanyStats(env, id) });
+    }
+
+    // Platform-wide aggregates for the admin console's overview charts
+    // (role/company/billboard/traffic breakdowns, revenue, region spend).
+    // Polled every ~20s by admin.html — cheap GROUP BY queries, no joins
+    // across the full billboards table beyond what's already indexed.
+    if (path === 'admin/stats/overview' && method === 'GET') {
+      if (me.role !== 'superuser') return bad('Superuser access required', 403);
+
+      const roleRows = await env.DB.prepare('SELECT role, COUNT(*) AS n FROM users GROUP BY role').all();
+      const coRows = await env.DB.prepare('SELECT type, COUNT(*) AS n FROM companies GROUP BY type').all();
+      const coTotals = await env.DB.prepare(
+        `SELECT (SELECT COUNT(*) FROM users WHERE company_id IS NOT NULL) AS members,
+                (SELECT COUNT(*) FROM billboards WHERE company_id IS NOT NULL) AS billboards`
+      ).first();
+      const stateRows = await env.DB.prepare('SELECT approval_state AS s, COUNT(*) AS n FROM billboards GROUP BY approval_state').all();
+      const availRows = await env.DB.prepare(
+        `SELECT availability AS s, COUNT(*) AS n FROM billboards WHERE approval_state='approved' GROUP BY availability`
+      ).all();
+      const revRow = await env.DB.prepare(
+        `SELECT SUM(CASE WHEN availability='booked' THEN price ELSE 0 END) AS booked, SUM(price) AS potential
+         FROM billboards WHERE approval_state='approved'`
+      ).first();
+      // Only the most recent snapshot per billboard counts toward "current"
+      // congestion — a correlated MAX() subquery instead of a window
+      // function keeps this portable across whatever SQLite build D1 runs.
+      const densityRows = await env.DB.prepare(
+        `SELECT density_label AS s, COUNT(*) AS n
+         FROM traffic_snapshots ts
+         WHERE ts.captured_at = (SELECT MAX(captured_at) FROM traffic_snapshots WHERE billboard_id = ts.billboard_id)
+           AND density_label IS NOT NULL
+         GROUP BY density_label`
+      ).all();
+      const regionRows = await env.DB.prepare(
+        `SELECT area, COALESCE(SUM(price),0) AS spend, COUNT(DISTINCT customer_id) AS customers
+         FROM billboards WHERE availability='booked' AND approval_state='approved'
+         GROUP BY area ORDER BY spend DESC LIMIT 8`
+      ).all();
+
+      const toMap = rows => Object.fromEntries(rows.map(r => [r.s ?? r.role, r.n]));
+
+      return json({
+        roles: toMap(roleRows.results || []),
+        companies: {
+          provider: (coRows.results || []).find(r => r.type === 'provider')?.n || 0,
+          agency: (coRows.results || []).find(r => r.type === 'agency')?.n || 0,
+          totalMembers: coTotals.members || 0,
+          totalBillboards: coTotals.billboards || 0
+        },
+        billboardStatus: toMap(stateRows.results || []),
+        billboardAvailability: toMap(availRows.results || []),
+        trafficDensity: toMap(densityRows.results || []),
+        revenue: { booked: revRow.booked || 0, potential: revRow.potential || 0 },
+        regionSpend: (regionRows.results || []).map(r => ({ area: r.area, spend: r.spend, customers: r.customers }))
+      });
     }
 
     /* ================================================================
@@ -1141,42 +1197,7 @@ export async function onRequest(context) {
     // company — the numbers behind the stat tiles + pie chart on dashboard.html.
     if (path === 'company/dashboard' && method === 'GET') {
       if (!me.company_id) return bad('Your account isn\'t linked to a company yet.', 403);
-      const totals = await env.DB.prepare(
-        `SELECT
-           COUNT(*) AS total,
-           SUM(CASE WHEN availability='booked' THEN 1 ELSE 0 END) AS booked,
-           SUM(CASE WHEN availability='available' THEN 1 ELSE 0 END) AS available,
-           SUM(CASE WHEN availability='pending' THEN 1 ELSE 0 END) AS pendingAvailability,
-           SUM(CASE WHEN availability='booked' THEN price ELSE 0 END) AS revenue,
-           SUM(CASE WHEN availability='booked' AND booking_end IS NOT NULL AND booking_end <= ? THEN 1 ELSE 0 END) AS expiringSoon
-         FROM billboards WHERE company_id=?`
-      ).bind(Date.now() + EXPIRING_SOON_MS, me.company_id).first();
-      const favRow = await env.DB.prepare(
-        `SELECT COUNT(*) AS n FROM favorites f JOIN billboards b ON b.id=f.billboard_id WHERE b.company_id=?`
-      ).bind(me.company_id).first();
-      const approvalRow = await env.DB.prepare(
-        `SELECT
-           SUM(CASE WHEN approval_state='approved' THEN 1 ELSE 0 END) AS approved,
-           SUM(CASE WHEN approval_state='pending' THEN 1 ELSE 0 END) AS pending,
-           SUM(CASE WHEN approval_state='draft' THEN 1 ELSE 0 END) AS draft,
-           SUM(CASE WHEN approval_state='rejected' THEN 1 ELSE 0 END) AS rejected
-         FROM billboards WHERE company_id=?`
-      ).bind(me.company_id).first();
-      return json({
-        total: totals.total || 0,
-        booked: totals.booked || 0,
-        available: totals.available || 0,
-        pendingAvailability: totals.pendingAvailability || 0,
-        revenue: totals.revenue || 0,
-        expiringSoon: totals.expiringSoon || 0,
-        totalFavorites: favRow.n || 0,
-        approvalBreakdown: {
-          approved: approvalRow.approved || 0,
-          pending: approvalRow.pending || 0,
-          draft: approvalRow.draft || 0,
-          rejected: approvalRow.rejected || 0
-        }
-      });
+      return json(await computeCompanyStats(env, me.company_id));
     }
 
     // Agent view: per-customer active-billboard count, spend, and budget
@@ -1277,6 +1298,49 @@ export async function onRequest(context) {
 // duplicate-email check in register() so a failed signup doesn't leave an
 // orphan company behind (D1/Workers has no cheap cross-statement
 // transaction here, same non-atomic style as the rest of this file).
+// Inventory/revenue/approval snapshot for one company — shared by the
+// company's own dashboard.html (company/dashboard, scoped to me.company_id)
+// and the superuser drill-down in admin.html (admin/companies/<id>, scoped
+// to an arbitrary company id).
+async function computeCompanyStats(env, companyId) {
+  const totals = await env.DB.prepare(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN availability='booked' THEN 1 ELSE 0 END) AS booked,
+       SUM(CASE WHEN availability='available' THEN 1 ELSE 0 END) AS available,
+       SUM(CASE WHEN availability='pending' THEN 1 ELSE 0 END) AS pendingAvailability,
+       SUM(CASE WHEN availability='booked' THEN price ELSE 0 END) AS revenue,
+       SUM(CASE WHEN availability='booked' AND booking_end IS NOT NULL AND booking_end <= ? THEN 1 ELSE 0 END) AS expiringSoon
+     FROM billboards WHERE company_id=?`
+  ).bind(Date.now() + EXPIRING_SOON_MS, companyId).first();
+  const favRow = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM favorites f JOIN billboards b ON b.id=f.billboard_id WHERE b.company_id=?`
+  ).bind(companyId).first();
+  const approvalRow = await env.DB.prepare(
+    `SELECT
+       SUM(CASE WHEN approval_state='approved' THEN 1 ELSE 0 END) AS approved,
+       SUM(CASE WHEN approval_state='pending' THEN 1 ELSE 0 END) AS pending,
+       SUM(CASE WHEN approval_state='draft' THEN 1 ELSE 0 END) AS draft,
+       SUM(CASE WHEN approval_state='rejected' THEN 1 ELSE 0 END) AS rejected
+     FROM billboards WHERE company_id=?`
+  ).bind(companyId).first();
+  return {
+    total: totals.total || 0,
+    booked: totals.booked || 0,
+    available: totals.available || 0,
+    pendingAvailability: totals.pendingAvailability || 0,
+    revenue: totals.revenue || 0,
+    expiringSoon: totals.expiringSoon || 0,
+    totalFavorites: favRow.n || 0,
+    approvalBreakdown: {
+      approved: approvalRow.approved || 0,
+      pending: approvalRow.pending || 0,
+      draft: approvalRow.draft || 0,
+      rejected: approvalRow.rejected || 0
+    }
+  };
+}
+
 async function resolveCompany(env, body) {
   if (body.companyId) {
     const co = await env.DB.prepare('SELECT id, name FROM companies WHERE id=?').bind(body.companyId).first();

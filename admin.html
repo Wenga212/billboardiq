@@ -16,16 +16,16 @@
     --bg:#e9eae4; --panel:#f5f6f1; --panel-2:#e0e2d9; --line:#cdd1c4;
     --text:#171a17; --muted:#67706a;
     --accent:#cfec2f; --accent-ink:#151810; --accent-text:#5f7a00;
-    --green:#188544; --amber:#a3650a; --red:#cc3b3b;
-    --green-bg:rgba(24,133,68,.12); --amber-bg:rgba(163,101,10,.14); --red-bg:rgba(204,59,59,.12);
+    --green:#188544; --amber:#a3650a; --red:#cc3b3b; --blue:#1e5db8;
+    --green-bg:rgba(24,133,68,.12); --amber-bg:rgba(163,101,10,.14); --red-bg:rgba(204,59,59,.12); --blue-bg:rgba(30,93,184,.12);
     --shadow:0 8px 30px rgba(20,24,18,.18);
   }
   [data-theme="dark"] {
     --bg:#0b0d0c; --panel:#121514; --panel-2:#181b1a; --line:#242827;
     --text:#ecebe4; --muted:#6b7270;
     --accent:#d4ff3a; --accent-ink:#0b0d0c; --accent-text:#d4ff3a;
-    --green:#4ade80; --amber:#fbbf24; --red:#f87171;
-    --green-bg:rgba(74,222,128,.12); --amber-bg:rgba(251,191,36,.12); --red-bg:rgba(248,113,113,.12);
+    --green:#4ade80; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa;
+    --green-bg:rgba(74,222,128,.12); --amber-bg:rgba(251,191,36,.12); --red-bg:rgba(248,113,113,.12); --blue-bg:rgba(96,165,250,.12);
     --shadow:0 8px 30px rgba(0,0,0,.5);
   }
   [data-theme="light"] {
@@ -151,6 +151,62 @@
     font-weight:700; font-size:12px; letter-spacing:1px; text-transform:uppercase;
   }
 
+  /* quick nav */
+  .quicknav { display:flex; gap:6px; flex-wrap:wrap; padding:12px 0 22px; }
+  .quicknav a {
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--muted); padding:7px 12px; border:1px solid var(--line); background:var(--panel-2); text-decoration:none;
+  }
+  .quicknav a:hover { color:var(--text); border-color:var(--muted); }
+  h2 { scroll-margin-top:76px; }
+
+  /* kpi tiles (shared look with dashboard.html) */
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:20px; }
+  .kpi-tile { background:var(--panel); border:1px solid var(--line); padding:14px 16px; }
+  .kpi-label { font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .kpi-value { font-family:'Bebas Neue',sans-serif; font-size:26px; letter-spacing:1px; }
+
+  /* donut grid */
+  .donut-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; margin-bottom:20px; }
+  .donut-card { background:var(--panel); border:1px solid var(--line); padding:16px; }
+  .donut-card h3 { font-family:'Bebas Neue',sans-serif; font-size:15px; letter-spacing:1px; font-weight:400; margin:0 0 12px; }
+  .donut-card h3 small { font-family:'DM Sans',sans-serif; font-size:10px; letter-spacing:0; text-transform:none; color:var(--muted); font-weight:400; margin-left:6px; }
+  .donut-wrap { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .donut-svg-box { position:relative; width:108px; height:108px; flex-shrink:0; transition:opacity .3s; }
+  .donut-svg-box.empty { opacity:.35; }
+  .donut-svg { width:100%; height:100%; }
+  .donut-track { fill:none; stroke:var(--panel-2); }
+  .donut-seg { cursor:pointer; transition:stroke-dasharray 1s cubic-bezier(.4,0,.2,1), stroke-dashoffset 1s cubic-bezier(.4,0,.2,1), stroke-width .15s; }
+  .donut-seg.hover { stroke-width:19px; filter:brightness(1.12); }
+  .donut-c-green { stroke:var(--green); } .donut-c-amber { stroke:var(--amber); } .donut-c-red { stroke:var(--red); }
+  .donut-c-blue { stroke:var(--blue); } .donut-c-accent { stroke:var(--accent); } .donut-c-muted { stroke:var(--muted); }
+  .donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+  .donut-center-value { font-family:'Bebas Neue',sans-serif; font-size:21px; letter-spacing:1px; }
+  .donut-center-label { font-family:'JetBrains Mono',monospace; font-size:8px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
+  .donut-legend { display:flex; flex-direction:column; gap:6px; flex:1; min-width:120px; }
+  .donut-legend-item { display:flex; align-items:center; gap:8px; font-size:11px; cursor:pointer; padding:3px 0; }
+  .donut-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+  .donut-dot.c-green { background:var(--green); } .donut-dot.c-amber { background:var(--amber); } .donut-dot.c-red { background:var(--red); }
+  .donut-dot.c-blue { background:var(--blue); } .donut-dot.c-accent { background:var(--accent); } .donut-dot.c-muted { background:var(--muted); }
+  .donut-legend-label { flex:1; color:var(--muted); }
+  .donut-legend-value { font-family:'JetBrains Mono',monospace; font-weight:600; }
+
+  /* region bar chart, hover + entrance animation */
+  .bar-list { display:flex; flex-direction:column; gap:10px; }
+  .bar-row { display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .bar-label { width:150px; flex-shrink:0; font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-track { flex:1; height:16px; background:var(--panel-2); border-radius:4px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:0 4px 4px 0; background:var(--accent); width:0; transition:width 1s cubic-bezier(.4,0,.2,1); }
+  .bar-value { width:90px; text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; flex-shrink:0; }
+
+  /* shared tooltip (charts.js) */
+  .chart-tooltip {
+    position:fixed; z-index:99999; background:var(--panel); border:1px solid var(--line);
+    padding:8px 12px; font-size:11px; line-height:1.5; box-shadow:var(--shadow);
+    opacity:0; pointer-events:none; transition:opacity .12s ease; max-width:240px;
+  }
+  .chart-tooltip.show { opacity:1; }
+
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(120px);
     background:var(--accent); color:var(--accent-ink); padding:12px 20px;
@@ -181,7 +237,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.23</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.24</span></a>
   <div class="breadcrumb">CONSOLE / <span>USERS &amp; ROLES</span></div>
   <div class="top-actions">
     <span class="pill" id="whoami" style="cursor:default"></span>
@@ -198,7 +254,32 @@
 </div>
 
 <main class="hidden" id="main">
-  <h2>USERS</h2>
+  <nav class="quicknav" id="quicknav">
+    <a href="#h-overview" id="qn-overview" class="hidden">Overview</a>
+    <a href="#h-users">Users</a>
+    <a href="#h-companies" id="qn-companies" class="hidden">Companies</a>
+    <a href="#h-ai-engine" id="qn-ai-engine" class="hidden">AI Engine</a>
+    <a href="#h-audit" id="qn-audit" class="hidden">Audit Log</a>
+  </nav>
+
+  <section id="overview-section" class="hidden">
+    <h2 id="h-overview">OVERVIEW</h2>
+    <div class="sub">Platform-wide stats across every company and account — refreshes automatically every 20 seconds.</div>
+    <div class="kpi-grid" id="ov-kpis"></div>
+    <div class="donut-grid">
+      <div class="donut-card"><h3>User Roles</h3><div class="donut-box" id="donut-roles"></div></div>
+      <div class="donut-card"><h3>Billboard Approval Status</h3><div class="donut-box" id="donut-status"></div></div>
+      <div class="donut-card"><h3>Billboard Availability <small>approved only</small></h3><div class="donut-box" id="donut-avail"></div></div>
+      <div class="donut-card"><h3>Company Types</h3><div class="donut-box" id="donut-companies"></div></div>
+      <div class="donut-card"><h3>Traffic Density <small>latest reading / billboard</small></h3><div class="donut-box" id="donut-density"></div></div>
+    </div>
+    <div class="panel" style="padding:16px 20px">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;font-weight:400;margin:0 0 12px">Booked Revenue by Region</h3>
+      <div class="bar-list" id="region-bars"></div>
+    </div>
+  </section>
+
+  <h2 id="h-users">USERS</h2>
   <div class="sub" id="users-sub">All registered accounts. Role changes and deletion require superuser.</div>
   <div class="panel">
     <table>
@@ -210,7 +291,7 @@
   </div>
 
   <section id="companies-section" class="hidden">
-    <h2>COMPANIES</h2>
+    <h2 id="h-companies">COMPANIES</h2>
     <div class="sub">Registered provider &amp; agency companies — members, inventory, and total logins per company.</div>
     <div class="panel">
       <div class="co-new-row">
@@ -226,6 +307,11 @@
       </table>
       <div class="co-detail" id="co-detail">
         <h3 id="co-detail-title"></h3>
+        <div class="kpi-grid" id="co-detail-kpis" style="margin-bottom:16px"></div>
+        <div class="donut-card" style="margin-bottom:16px">
+          <h3>Approval Breakdown</h3>
+          <div class="donut-box" id="co-detail-donut"></div>
+        </div>
         <ul class="co-members" id="co-detail-members"></ul>
         <ul class="audit" id="co-detail-audit"></ul>
       </div>
@@ -233,7 +319,7 @@
   </section>
 
   <section id="ai-engine-section" class="hidden">
-    <h2>AI TRAFFIC ENGINE</h2>
+    <h2 id="h-ai-engine">AI TRAFFIC ENGINE</h2>
     <div class="sub">Analyzes queued traffic screenshots with Claude vision and writes congestion scores. Runs on demand — each run calls the Anthropic API once per pending snapshot.</div>
     <div class="panel ai-engine-panel">
       <div class="ai-engine-row">
@@ -249,7 +335,7 @@
   </section>
 
   <section id="audit-section" class="hidden">
-    <h2>AUDIT LOG</h2>
+    <h2 id="h-audit">AUDIT LOG</h2>
     <div class="sub">Last 100 security events — logins, failures, role changes, MFA activity.</div>
     <div class="panel"><ul class="audit" id="audit"></ul></div>
   </section>
@@ -257,6 +343,7 @@
 
 <div class="toast" id="toast" role="status"></div>
 
+<script src="/charts.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let theme = (function(){ try { return localStorage.getItem('bbiq-theme') || 'light'; } catch(e) { return 'light'; }})();
@@ -322,12 +409,18 @@ function gate(title, msg, showBtn) {
     if (me.role !== 'superuser') $('users-sub').textContent = 'All registered accounts. Sign in as a superuser to change roles or delete users.';
     await loadUsers();
     if (me.role === 'superuser') {
+      ['qn-companies', 'qn-ai-engine', 'qn-audit', 'qn-overview'].forEach(id => $(id).classList.remove('hidden'));
+      $('overview-section').classList.remove('hidden');
+      await loadOverviewStats();
       $('companies-section').classList.remove('hidden');
       await loadCompanies();
       $('audit-section').classList.remove('hidden');
       await loadAudit();
       $('ai-engine-section').classList.remove('hidden');
       await loadAiEngineStatus();
+      // Live-refresh the overview charts — animated in place (see charts.js),
+      // no full page reload. Paused while the tab isn't visible.
+      setInterval(() => { if (!document.hidden) loadOverviewStats(); }, 20000);
     }
   } catch (e) {
     if (e.status === 401) { location.href = 'login.html'; return; }
@@ -392,6 +485,81 @@ async function loadAudit() {
   ).join('') || '<li><span class="a-det" style="color:var(--muted)">No events yet.</span></li>';
 }
 
+function fmtMoney(n) {
+  if (n >= 1000000) return 'LKR ' + (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return 'LKR ' + Math.round(n / 1000) + 'K';
+  return 'LKR ' + Math.round(n || 0);
+}
+
+// Every category in each map is always emitted (even at 0) so the segment
+// count/order never changes between polls — renderDonut's live-refresh
+// path updates existing arcs in place by index, so a shifting segment set
+// would point it at the wrong wedge.
+const ROLE_COLORS = { user: 'green', provider: 'accent', agent: 'blue', admin: 'amber', superuser: 'red' };
+const STATUS_COLORS = { draft: 'muted', pending: 'amber', approved: 'green', rejected: 'red' };
+const AVAIL_COLORS = { available: 'green', pending: 'amber', booked: 'red' };
+const DENSITY_COLORS = { free: 'green', moderate: 'amber', heavy: 'red' };
+
+function toSegments(counts, colorMap) {
+  return Object.keys(colorMap).map(k => ({
+    key: k, label: k.charAt(0).toUpperCase() + k.slice(1), value: counts[k] || 0, colorClass: colorMap[k]
+  }));
+}
+
+function kpiTiles(items) {
+  return items.map(k => '<div class="kpi-tile"><div class="kpi-label">' + esc(k.label) + '</div><div class="kpi-value">' + k.value + '</div></div>').join('');
+}
+
+// tipValue is plain text (never pre-built HTML) — charts.js escapes it once
+// more, right before it goes into the tooltip's innerHTML. Region/area names
+// are free text a provider entered, so it has to go through esc() exactly
+// once per HTML context it lands in, not zero and not twice.
+function barChartRow(label, value, max, valueText, tipValue) {
+  const pct = max ? Math.max(2, Math.round((value / max) * 100)) : 0;
+  return '<div class="bar-row" data-tip-label="' + esc(label) + '" data-tip-value="' + esc(tipValue) + '">' +
+    '<span class="bar-label">' + esc(label) + '</span>' +
+    '<div class="bar-track"><div class="bar-fill" data-anim-val="' + pct + '%"></div></div>' +
+    '<span class="bar-value">' + esc(valueText) + '</span>' +
+  '</div>';
+}
+
+async function loadOverviewStats() {
+  try {
+    const d = await api('admin/stats/overview');
+    const totalUsers = Object.values(d.roles).reduce((s, n) => s + n, 0);
+    const totalCompanies = d.companies.provider + d.companies.agency;
+
+    $('ov-kpis').innerHTML = kpiTiles([
+      { label: 'Total Users', value: totalUsers },
+      { label: 'Total Companies', value: totalCompanies },
+      { label: 'Total Billboards', value: d.companies.totalBillboards },
+      { label: 'Booked Revenue /mo', value: fmtMoney(d.revenue.booked) },
+      { label: 'Potential Revenue /mo', value: fmtMoney(d.revenue.potential) }
+    ]);
+
+    renderDonut($('donut-roles'), toSegments(d.roles, ROLE_COLORS), { centerLabel: 'Users' });
+    renderDonut($('donut-status'), toSegments(d.billboardStatus, STATUS_COLORS), { centerLabel: 'Billboards' });
+    renderDonut($('donut-avail'), toSegments(d.billboardAvailability, AVAIL_COLORS), { centerLabel: 'Approved' });
+    renderDonut($('donut-companies'), [
+      { key: 'provider', label: 'Provider', value: d.companies.provider, colorClass: 'accent' },
+      { key: 'agency', label: 'Agency', value: d.companies.agency, colorClass: 'blue' }
+    ], { centerLabel: 'Companies' });
+    renderDonut($('donut-density'), toSegments(d.trafficDensity, DENSITY_COLORS), { centerLabel: 'Readings' });
+
+    const maxSpend = Math.max(1, ...d.regionSpend.map(r => r.spend));
+    $('region-bars').innerHTML = d.regionSpend.length
+      ? d.regionSpend.map(r => barChartRow(
+          r.area, r.spend, maxSpend, fmtMoney(r.spend),
+          fmtMoney(r.spend) + ' · ' + r.customers + ' customer' + (r.customers === 1 ? '' : 's')
+        )).join('')
+      : '<div style="color:var(--muted);font-size:12px">No booked revenue yet.</div>';
+    animateIn($('region-bars'));
+    wireTooltips($('region-bars'));
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 async function loadCompanies() {
   const d = await api('admin/companies');
   $('co-rows').innerHTML = (d.companies || []).map(c =>
@@ -415,6 +583,14 @@ async function loadCompanyDetail(id, name) {
   $('co-detail-audit').innerHTML = '';
   try {
     const d = await api('admin/companies/' + id);
+    $('co-detail-kpis').innerHTML = kpiTiles([
+      { label: 'Total Billboards', value: d.stats.total },
+      { label: 'Available', value: d.stats.available },
+      { label: 'Booked', value: d.stats.booked },
+      { label: 'Booked Revenue /mo', value: fmtMoney(d.stats.revenue) },
+      { label: 'Expiring Soon', value: d.stats.expiringSoon }
+    ]);
+    renderDonut($('co-detail-donut'), toSegments(d.stats.approvalBreakdown, STATUS_COLORS), { centerLabel: 'Billboards' });
     $('co-detail-members').innerHTML = (d.members || []).map(m =>
       '<li><span class="role ' + m.role + '">' + m.role + '</span> ' + esc(m.name) + ' <span class="u-email">' + esc(m.email) + '</span>' +
       '<span class="co-login-count">' + m.loginCount + ' login' + (m.loginCount === 1 ? '' : 's') + ' · last ' + fmtTime(m.last_login) + '</span></li>'

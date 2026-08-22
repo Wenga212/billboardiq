@@ -172,7 +172,8 @@
     display:flex; height:20px; border-radius:4px; overflow:hidden;
     background:var(--panel); gap:2px;
   }
-  .util-bar .seg { height:100%; }
+  .util-bar .seg { height:100%; flex-basis:0; cursor:pointer; transition:flex-basis 1s cubic-bezier(.4,0,.2,1), filter .15s; }
+  .util-bar .seg:hover { filter:brightness(1.15); }
   .util-bar .seg.available { background:var(--green); }
   .util-bar .seg.pending { background:var(--amber); }
   .util-bar .seg.booked { background:var(--red); }
@@ -188,13 +189,43 @@
   .util-legend .dot.muted { background:var(--panel-2); border:1px solid var(--line); }
 
   .bar-list { display:flex; flex-direction:column; gap:10px; }
-  .bar-row { display:flex; align-items:center; gap:10px; }
+  .bar-row { display:flex; align-items:center; gap:10px; cursor:pointer; }
   .bar-label { width:150px; flex-shrink:0; font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .bar-track { flex:1; height:16px; background:var(--panel-2); border-radius:4px; overflow:hidden; }
-  .bar-fill { height:100%; border-radius:0 4px 4px 0; }
+  .bar-fill { height:100%; border-radius:0 4px 4px 0; width:0; transition:width 1s cubic-bezier(.4,0,.2,1), filter .15s; }
   .bar-fill.accent { background:var(--accent); }
   .bar-fill.blue { background:var(--blue); }
+  .bar-row:hover .bar-fill { filter:brightness(1.15); }
   .bar-value { width:70px; flex-shrink:0; text-align:right; font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+
+  /* donut charts (charts.js) */
+  .donut-row { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+  .donut-svg-box { position:relative; width:108px; height:108px; flex-shrink:0; transition:opacity .3s; }
+  .donut-svg-box.empty { opacity:.35; }
+  .donut-svg { width:100%; height:100%; }
+  .donut-track { fill:none; stroke:var(--panel-2); }
+  .donut-seg { cursor:pointer; transition:stroke-dasharray 1s cubic-bezier(.4,0,.2,1), stroke-dashoffset 1s cubic-bezier(.4,0,.2,1), stroke-width .15s; }
+  .donut-seg.hover { stroke-width:19px; filter:brightness(1.12); }
+  .donut-c-green { stroke:var(--green); } .donut-c-amber { stroke:var(--amber); } .donut-c-red { stroke:var(--red); }
+  .donut-c-blue { stroke:var(--blue); } .donut-c-accent { stroke:var(--accent); } .donut-c-muted { stroke:var(--panel-2); }
+  .donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+  .donut-center-value { font-family:'Bebas Neue',sans-serif; font-size:21px; letter-spacing:1px; }
+  .donut-center-label { font-family:'JetBrains Mono',monospace; font-size:8px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
+  .donut-legend { display:flex; flex-direction:column; gap:6px; flex:1; min-width:140px; }
+  .donut-legend-item { display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; padding:3px 0; }
+  .donut-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+  .donut-dot.c-green { background:var(--green); } .donut-dot.c-amber { background:var(--amber); } .donut-dot.c-red { background:var(--red); }
+  .donut-dot.c-blue { background:var(--blue); } .donut-dot.c-accent { background:var(--accent); } .donut-dot.c-muted { background:var(--panel-2); border:1px solid var(--line); }
+  .donut-legend-label { flex:1; color:var(--muted); }
+  .donut-legend-value { font-family:'JetBrains Mono',monospace; font-weight:600; }
+
+  /* shared tooltip (charts.js) */
+  .chart-tooltip {
+    position:fixed; z-index:99999; background:var(--panel); border:1px solid var(--line);
+    padding:8px 12px; font-size:11px; line-height:1.5; box-shadow:var(--shadow);
+    opacity:0; pointer-events:none; transition:opacity .12s ease; max-width:240px;
+  }
+  .chart-tooltip.show { opacity:1; }
 
   .chart { height: 80px; display: flex; align-items: flex-end; gap: 3px; }
   .bar {
@@ -592,11 +623,12 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.23</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.24</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
     <button class="pill" id="themeBtn">◑ DARK</button>
+    <button class="pill hidden" id="adminConsoleBtn" onclick="location.href='admin.html'">⚙ Admin Console</button>
     <button class="pill" onclick="location.href='index.html'">Map</button>
     <button class="pill" onclick="location.href='login.html'">Account</button>
   </div>
@@ -867,6 +899,7 @@
 
 <div class="toast" id="toast" role="status"></div>
 
+<script src="/charts.js"></script>
 <script>
 /* ================================================================
    CONFIG — paste your Google Maps API key here (same as index.html).
@@ -1398,6 +1431,7 @@ function hydrateSources(ds) {
     if (me.role === 'admin' || me.role === 'superuser') {
       ['tab-pending', 'tab-approved', 'tab-rejected', 'tab-all'].forEach(id => $(id).classList.remove('hidden'));
     }
+    if (me.role === 'admin' || me.role === 'superuser') $('adminConsoleBtn').classList.remove('hidden');
     // Customers tab: agents manage tenants directly; admins/superusers can
     // audit any company's. Providers don't create billboards for clients
     // they don't own, so it stays out of their nav.
@@ -1434,6 +1468,11 @@ function hydrateSources(ds) {
 // full reload forces boot() to re-check /api/me for real, so a stale
 // session can't leave the dashboard visible to a signed-out visitor.
 window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
+
+// Live-refresh the Overview tab's charts while it's the active view — the
+// same refresh() a manual action already triggers, just on a timer. Paused
+// on other tabs/hidden tab to avoid pointless fetches.
+setInterval(() => { if (me && currentView === 'overview' && !document.hidden) refresh(); }, 20000);
 
 // Compatibility no-op so any stray reference doesn't throw
 function renderPeakChips_removed() {}
@@ -1557,6 +1596,16 @@ function fmtCompact(n) {
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
   return String(Math.round(n || 0));
 }
+
+// Every category always emitted (even at 0) so a donut's segment count/order
+// never shifts between renders — renderDonut's live-refresh path (charts.js)
+// updates existing arcs in place by index.
+const STATUS_COLORS = { draft: 'muted', pending: 'amber', approved: 'green', rejected: 'red' };
+function toSegments(counts, colorMap) {
+  return Object.keys(colorMap).map(k => ({
+    key: k, label: k.charAt(0).toUpperCase() + k.slice(1), value: counts[k] || 0, colorClass: colorMap[k]
+  }));
+}
 function daysAgo(ts) {
   const d = Math.floor((Date.now() - ts) / 86400000);
   if (d <= 0) return 'today';
@@ -1572,10 +1621,12 @@ function stateLabel(b) {
 
 function barRow(label, value, max, hueClass, formatter) {
   const pct = max ? Math.max(4, Math.round((value / max) * 100)) : 0;
-  return `<div class="bar-row">
+  const valueText = formatter ? formatter(value) : value;
+  const tipValue = String(valueText) + (max ? ' · ' + pct + '%' : '');
+  return `<div class="bar-row" data-tip-label="${esc(label)}" data-tip-value="${esc(tipValue)}">
     <span class="bar-label">${esc(label)}</span>
-    <div class="bar-track"><div class="bar-fill ${hueClass}" style="width:${pct}%"></div></div>
-    <span class="bar-value">${formatter ? formatter(value) : value}</span>
+    <div class="bar-track"><div class="bar-fill ${hueClass}" data-anim-val="${pct}%"></div></div>
+    <span class="bar-value">${valueText}</span>
   </div>`;
 }
 
@@ -1644,10 +1695,11 @@ function renderOvSummary(d) {
     <div class="ov-section">
       <h3>Utilization</h3>
       ${d.liveTotal ? `
+        <div class="donut-row" id="donut-util"></div>
         <div class="util-bar">
-          <span class="seg available" style="flex-basis:${pctFn(d.counts.available)}%"></span>
-          <span class="seg pending" style="flex-basis:${pctFn(d.counts.pending)}%"></span>
-          <span class="seg booked" style="flex-basis:${pctFn(d.counts.booked)}%"></span>
+          <span class="seg available" data-anim-prop="flexBasis" data-anim-val="${pctFn(d.counts.available)}%" data-tip-label="Available" data-tip-value="${d.counts.available} · ${Math.round(pctFn(d.counts.available))}%"></span>
+          <span class="seg pending" data-anim-prop="flexBasis" data-anim-val="${pctFn(d.counts.pending)}%" data-tip-label="Pending" data-tip-value="${d.counts.pending} · ${Math.round(pctFn(d.counts.pending))}%"></span>
+          <span class="seg booked" data-anim-prop="flexBasis" data-anim-val="${pctFn(d.counts.booked)}%" data-tip-label="Booked" data-tip-value="${d.counts.booked} · ${Math.round(pctFn(d.counts.booked))}%"></span>
         </div>
         <div class="util-legend">
           <span><i class="dot available"></i>Available <b>${d.counts.available}</b></span>
@@ -1772,9 +1824,10 @@ function renderOvAudience(d) {
     <div class="ov-section">
       <h3>Illuminated vs. Non-illuminated</h3>
       ${d.liveTotal ? `
+        <div class="donut-row" id="donut-illum"></div>
         <div class="util-bar">
-          <span class="seg accent" style="flex-basis:${illumPct(illumCount)}%"></span>
-          <span class="seg muted" style="flex-basis:${illumPct(darkCount)}%"></span>
+          <span class="seg accent" data-anim-prop="flexBasis" data-anim-val="${illumPct(illumCount)}%" data-tip-label="Illuminated" data-tip-value="${illumCount} · ${Math.round(illumPct(illumCount))}%"></span>
+          <span class="seg muted" data-anim-prop="flexBasis" data-anim-val="${illumPct(darkCount)}%" data-tip-label="Non-illuminated" data-tip-value="${darkCount} · ${Math.round(illumPct(darkCount))}%"></span>
         </div>
         <div class="util-legend">
           <span><i class="dot accent"></i>Illuminated <b>${illumCount}</b></span>
@@ -1819,6 +1872,7 @@ function renderOvPipeline(d) {
   return `
     <div class="ov-section">
       <h3>Approval Funnel</h3>
+      <div class="donut-row" id="donut-funnel"></div>
       <div class="bar-list">${stateEntries.map(([state, count]) => barRow(state.charAt(0).toUpperCase() + state.slice(1), count, maxState, 'accent')).join('')}</div>
     </div>
     <div class="ov-section"><h3>Listing Data Completeness <small>live listings</small></h3>${completeness}</div>
@@ -1961,6 +2015,7 @@ async function loadProviderStats() {
   const newest = [...ovProviderStats].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
   section.innerHTML = `
     <h3>Provider Directory</h3>
+    <div class="donut-row" id="donut-verified"></div>
     ${statStrip([
       { label: 'Total providers', value: ovProviderStats.length },
       { label: 'Verified', value: verified },
@@ -1968,6 +2023,10 @@ async function loadProviderStats() {
     ])}
     ${newest.length ? `<div class="list-rows" style="margin-top:12px">${newest.map(u => listRow(u.companyName || u.name, u.email, daysAgo(u.createdAt), null)).join('')}</div>` : ''}
   `;
+  renderDonut($('donut-verified'), [
+    { key: 'verified', label: 'Verified', value: verified, colorClass: 'green' },
+    { key: 'unverified', label: 'Unverified', value: unverified, colorClass: 'muted' }
+  ], { centerLabel: 'Providers' });
 }
 
 function renderOverview() {
@@ -1993,6 +2052,28 @@ function renderOverview() {
     el.addEventListener('click', () => handleAction(el.dataset.action, el.dataset.id));
   });
 
+  animateIn(pane);
+  wireTooltips(pane);
+
+  if (ovSubTab === 'summary' && $('donut-util')) {
+    renderDonut($('donut-util'), [
+      { key: 'available', label: 'Available', value: d.counts.available, colorClass: 'green' },
+      { key: 'pending', label: 'Pending', value: d.counts.pending, colorClass: 'amber' },
+      { key: 'booked', label: 'Booked', value: d.counts.booked, colorClass: 'red' }
+    ], { centerLabel: 'Live' });
+  }
+  if (ovSubTab === 'audience' && $('donut-illum')) {
+    const illumCount = d.live.filter(b => b.illuminated).length;
+    renderDonut($('donut-illum'), [
+      { key: 'illuminated', label: 'Illuminated', value: illumCount, colorClass: 'accent' },
+      { key: 'dark', label: 'Non-illuminated', value: d.liveTotal - illumCount, colorClass: 'muted' }
+    ], { centerLabel: 'Live' });
+  }
+  if (ovSubTab === 'pipeline' && $('donut-funnel')) {
+    const stateCounts = { draft: 0, pending: 0, approved: 0, rejected: 0 };
+    d.list.forEach(b => { if (stateCounts[b.approvalState] != null) stateCounts[b.approvalState]++; });
+    renderDonut($('donut-funnel'), toSegments(stateCounts, STATUS_COLORS), { centerLabel: 'Listings' });
+  }
   if (ovSubTab === 'geography') {
     initOvMap(d);
     if (d.isAdmin) loadProviderStats();
