@@ -20,6 +20,12 @@
     --green:#188544; --amber:#a3650a; --red:#cc3b3b; --blue:#1e5db8;
     --green-bg:rgba(24,133,68,.12); --amber-bg:rgba(163,101,10,.14); --red-bg:rgba(204,59,59,.12); --blue-bg:rgba(30,93,184,.12);
     --overlay:rgba(245,246,241,.92); --shadow:0 8px 30px rgba(20,24,18,.18);
+    --radius-sm:8px; --radius-md:12px; --radius-lg:18px;
+    --edge-highlight:rgba(255,255,255,.55);
+    --shadow-xs:0 1px 3px rgba(23,26,23,.06);
+    --shadow-sm:0 2px 10px rgba(23,26,23,.07), 0 1px 2px rgba(23,26,23,.06);
+    --shadow-md:0 10px 28px rgba(23,26,23,.11), 0 2px 8px rgba(23,26,23,.06);
+    --shadow-lg:0 24px 60px rgba(23,26,23,.18), 0 8px 20px rgba(23,26,23,.09);
   }
   [data-theme="dark"] {
     --bg:#0b0d0c; --panel:#121514; --panel-2:#181b1a; --line:#242827;
@@ -28,6 +34,11 @@
     --green:#4ade80; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa;
     --green-bg:rgba(74,222,128,.12); --amber-bg:rgba(251,191,36,.12); --red-bg:rgba(248,113,113,.12); --blue-bg:rgba(96,165,250,.12);
     --overlay:rgba(11,13,12,.92); --shadow:0 8px 30px rgba(0,0,0,.5);
+    --edge-highlight:rgba(255,255,255,.045);
+    --shadow-xs:0 1px 3px rgba(0,0,0,.35);
+    --shadow-sm:0 2px 12px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.35);
+    --shadow-md:0 12px 30px rgba(0,0,0,.48), 0 3px 10px rgba(0,0,0,.36);
+    --shadow-lg:0 28px 64px rgba(0,0,0,.6), 0 10px 24px rgba(0,0,0,.4);
   }
   [data-theme="light"] {
     --bg:#e9eae4;
@@ -36,7 +47,12 @@
   html { scroll-behavior:smooth; }
   html.theming, html.theming * { transition: background-color .28s, color .28s, border-color .28s !important; }
   body {
-    background:var(--bg); color:var(--text);
+    background:
+      radial-gradient(1100px 480px at 15% -8%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%),
+      radial-gradient(900px 420px at 100% 0%, color-mix(in srgb, var(--blue) 6%, transparent), transparent 55%),
+      var(--bg);
+    background-attachment:fixed;
+    color:var(--text);
     font-family:'DM Sans',sans-serif; font-size:14px;
     -webkit-font-smoothing:antialiased;
     min-height:100vh; min-height:100dvh;
@@ -49,9 +65,11 @@
 
   /* header */
   header {
-    height:56px; border-bottom:1px solid var(--line); background:var(--panel);
+    height:56px; border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--panel) 85%, transparent);
+    backdrop-filter:blur(12px) saturate(1.3); -webkit-backdrop-filter:blur(12px) saturate(1.3);
     display:flex; align-items:center; gap:20px; padding:0 20px;
-    position:sticky; top:0; z-index:900;
+    position:sticky; top:0; z-index:900; box-shadow:var(--shadow-xs);
   }
   .logo {
     font-family:'Bebas Neue',sans-serif;
@@ -72,12 +90,13 @@
   .top-actions { margin-left:auto; display:flex; gap:10px; align-items:center; }
   .pill {
     font-family:'DM Sans',sans-serif; font-size:10px; letter-spacing:1.5px;
-    text-transform:uppercase; padding:6px 10px; border:1px solid var(--line);
+    text-transform:uppercase; padding:7px 12px; border:1px solid var(--line); border-radius:999px;
     color:var(--muted); background:var(--panel-2); cursor:pointer; white-space:nowrap;
+    transition:color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
   }
-  .pill:hover { color:var(--text); }
+  .pill:hover { color:var(--text); border-color:var(--muted); box-shadow:var(--shadow-xs); transform:translateY(-1px); }
   .pill.static { cursor:default; }
-  .pill.static:hover { color:var(--muted); }
+  .pill.static:hover { color:var(--muted); border-color:var(--line); box-shadow:none; transform:none; }
   #whoami { max-width:38vw; overflow:hidden; text-overflow:ellipsis; }
 
   main { max-width:1200px; margin:0 auto; padding:24px 20px 60px; }
@@ -88,27 +107,37 @@
   .page-head p { color:var(--muted); font-size:13px; margin-top:6px; }
 
   .btn {
-    background:var(--accent); color:var(--accent-ink); padding:11px 16px;
+    background:var(--accent); color:var(--accent-ink); padding:11px 16px; border-radius:var(--radius-sm);
     font-weight:700; font-size:12px; letter-spacing:1px; text-transform:uppercase;
-    transition:transform .15s, filter .15s;
+    box-shadow:var(--shadow-xs);
+    transition:transform .15s, filter .15s, box-shadow .15s ease;
   }
-  .btn:hover { transform:translateY(-1px); filter:brightness(1.05); }
-  .btn.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
-  .btn.ghost:hover { border-color:var(--muted); }
-  .btn.danger { background:var(--red-bg); color:var(--red); border:1px solid var(--red); }
-  .btn.danger:hover { background:var(--red); color:var(--bg); filter:none; }
+  .btn:hover { transform:translateY(-1px); filter:brightness(1.05); box-shadow:var(--shadow-sm); }
+  .btn:active { transform:translateY(0); box-shadow:var(--shadow-xs); }
+  .btn.ghost { background:transparent; color:var(--text); border:1px solid var(--line); box-shadow:none; }
+  .btn.ghost:hover { border-color:var(--muted); box-shadow:var(--shadow-xs); }
+  .btn.danger { background:var(--red-bg); color:var(--red); border:1px solid var(--red); box-shadow:none; }
+  .btn.danger:hover { background:var(--red); color:var(--bg); filter:none; box-shadow:var(--shadow-sm); }
   .btn.sm { padding:7px 11px; font-size:11px; }
-  .btn[disabled] { opacity:.5; cursor:wait; transform:none; }
+  .btn[disabled] { opacity:.5; cursor:wait; transform:none; box-shadow:none; }
 
-  /* tabs (owner vs admin queue) */
-  .tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); margin-bottom:20px; overflow-x:auto; }
+  /* tabs (owner vs admin queue) — a rounded track holding pill segments,
+     consistent across viewports and elevated with the shared shadow tokens */
+  .tabs {
+    display:flex; gap:4px; padding:4px; margin-bottom:20px;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius-md);
+    box-shadow:var(--shadow-xs), inset 0 1px 0 var(--edge-highlight);
+    overflow-x:auto; scroll-snap-type:x proximity; overscroll-behavior-x:contain;
+    -webkit-overflow-scrolling:touch;
+  }
   .tab {
-    padding:11px 16px; font-family:'JetBrains Mono',monospace; font-size:10px;
+    padding:10px 15px; font-family:'JetBrains Mono',monospace; font-size:10px;
     letter-spacing:1.5px; text-transform:uppercase; color:var(--muted);
-    border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap;
+    border-radius:8px; white-space:nowrap; scroll-snap-align:start;
+    transition:color .15s ease, background-color .15s ease, box-shadow .15s ease;
   }
   .tab:hover { color:var(--text); }
-  .tab.active { color:var(--text); border-bottom-color:var(--accent); }
+  .tab.active { color:var(--text); background:var(--panel); box-shadow:var(--shadow-sm); }
   .tab .count {
     display:inline-block; margin-left:6px; padding:1px 6px;
     background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
@@ -135,18 +164,40 @@
   .availability.booked { background:var(--red-bg); color:var(--red); }
 
   /* ================= OVERVIEW ================= */
-  .ov-subtabs { display:flex; gap:4px; margin-bottom:16px; flex-wrap:wrap; }
+  .ov-subtabs { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
   .ov-subtab {
     padding:7px 14px; font-family:'JetBrains Mono',monospace; font-size:10px;
-    letter-spacing:1px; text-transform:uppercase; color:var(--muted);
+    letter-spacing:1px; text-transform:uppercase; color:var(--muted); border-radius:999px;
     background:var(--panel-2); border:1px solid var(--line);
+    transition:color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
   }
-  .ov-subtab:hover { color:var(--text); }
-  .ov-subtab.active { color:var(--accent-ink); background:var(--accent); border-color:var(--accent); }
+  .ov-subtab:hover { color:var(--text); border-color:var(--muted); box-shadow:var(--shadow-xs); transform:translateY(-1px); }
+  .ov-subtab.active { color:var(--accent-ink); background:var(--accent); border-color:var(--accent); box-shadow:var(--shadow-xs); transform:none; }
 
-  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px; }
-  .kpi-tile { background:var(--panel); border:1px solid var(--line); padding:14px 16px; }
-  .kpi-tile.warn { border-color:color-mix(in srgb, var(--amber) 45%, transparent); }
+  /* kpi tiles — elevated cards, cycling a brand accent per position */
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:14px; margin-bottom:20px; }
+  .kpi-tile {
+    position:relative; overflow:hidden;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-md);
+    padding:17px 18px 16px;
+    box-shadow:var(--shadow-sm), inset 0 1px 0 var(--edge-highlight);
+    transition:transform .25s cubic-bezier(.4,0,.2,1), box-shadow .25s cubic-bezier(.4,0,.2,1), border-color .25s ease;
+  }
+  .kpi-tile::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background:linear-gradient(90deg, var(--tile-accent, var(--accent)), color-mix(in srgb, var(--tile-accent, var(--accent)) 25%, transparent));
+  }
+  .kpi-tile:hover {
+    transform:translateY(-3px);
+    box-shadow:var(--shadow-md), inset 0 1px 0 var(--edge-highlight);
+    border-color:color-mix(in srgb, var(--tile-accent, var(--accent)) 45%, var(--line));
+  }
+  .kpi-tile:nth-child(5n+1) { --tile-accent:var(--accent); }
+  .kpi-tile:nth-child(5n+2) { --tile-accent:var(--blue); }
+  .kpi-tile:nth-child(5n+3) { --tile-accent:var(--green); }
+  .kpi-tile:nth-child(5n+4) { --tile-accent:var(--amber); }
+  .kpi-tile:nth-child(5n+5) { --tile-accent:var(--red); }
+  .kpi-tile.warn { border-color:color-mix(in srgb, var(--amber) 45%, transparent); --tile-accent:var(--amber); }
   .kpi-label {
     font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.2px;
     text-transform:uppercase; color:var(--muted);
@@ -154,10 +205,11 @@
   .kpi-label small { text-transform:none; letter-spacing:0; }
   .kpi-value { font-size:24px; font-weight:600; margin-top:4px; line-height:1.1; }
   .kpi-tile.warn .kpi-value { color:var(--amber); }
+  [data-theme="dark"] .kpi-value { text-shadow:0 0 22px color-mix(in srgb, var(--tile-accent, var(--accent)) 30%, transparent); }
 
   .ov-section {
-    background:var(--panel); border:1px solid var(--line); padding:16px;
-    margin-bottom:14px;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-md); padding:16px;
+    margin-bottom:14px; box-shadow:var(--shadow-sm), inset 0 1px 0 var(--edge-highlight);
   }
   .ov-section h3 {
     font-family:'Bebas Neue',sans-serif; font-size:15px; letter-spacing:1.5px;
@@ -189,7 +241,8 @@
   .util-legend .dot.muted { background:var(--panel-2); border:1px solid var(--line); }
 
   .bar-list { display:flex; flex-direction:column; gap:10px; }
-  .bar-row { display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .bar-row { display:flex; align-items:center; gap:10px; cursor:pointer; padding:4px 6px; margin:0 -6px; border-radius:8px; transition:background-color .15s ease; }
+  .bar-row:hover { background:var(--panel-2); }
   .bar-label { width:150px; flex-shrink:0; font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .bar-track { flex:1; height:16px; background:var(--panel-2); border-radius:4px; overflow:hidden; }
   .bar-fill { height:100%; border-radius:0 4px 4px 0; width:0; transition:width 1s cubic-bezier(.4,0,.2,1), filter .15s; }
@@ -197,6 +250,19 @@
   .bar-fill.blue { background:var(--blue); }
   .bar-row:hover .bar-fill { filter:brightness(1.15); }
   .bar-value { width:70px; flex-shrink:0; text-align:right; font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+
+  /* donut grid — standalone elevated cards (used by the superuser Console's
+     Overview sub-tab); .donut-row below stays a plain inline layout since
+     it's already nested inside an .ov-section card elsewhere. */
+  .donut-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:16px; margin-bottom:20px; }
+  .donut-card {
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-md); padding:18px;
+    box-shadow:var(--shadow-sm), inset 0 1px 0 var(--edge-highlight);
+    transition:transform .25s cubic-bezier(.4,0,.2,1), box-shadow .25s cubic-bezier(.4,0,.2,1);
+  }
+  .donut-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-md), inset 0 1px 0 var(--edge-highlight); }
+  .donut-card h3 { font-family:'Bebas Neue',sans-serif; font-size:15px; letter-spacing:1px; font-weight:400; margin:0 0 12px; }
+  .donut-card h3 small { font-family:'DM Sans',sans-serif; font-size:10px; letter-spacing:0; text-transform:none; color:var(--muted); font-weight:400; margin-left:6px; }
 
   /* donut charts (charts.js) */
   .donut-row { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
@@ -212,7 +278,8 @@
   .donut-center-value { font-family:'Bebas Neue',sans-serif; font-size:21px; letter-spacing:1px; }
   .donut-center-label { font-family:'JetBrains Mono',monospace; font-size:8px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
   .donut-legend { display:flex; flex-direction:column; gap:6px; flex:1; min-width:140px; }
-  .donut-legend-item { display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; padding:3px 0; }
+  .donut-legend-item { display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; padding:4px 6px; margin:0 -6px; border-radius:6px; transition:background-color .15s ease; }
+  .donut-legend-item:hover { background:var(--panel-2); }
   .donut-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
   .donut-dot.c-green { background:var(--green); } .donut-dot.c-amber { background:var(--amber); } .donut-dot.c-red { background:var(--red); }
   .donut-dot.c-blue { background:var(--blue); } .donut-dot.c-accent { background:var(--accent); } .donut-dot.c-muted { background:var(--panel-2); border:1px solid var(--line); }
@@ -221,8 +288,8 @@
 
   /* shared tooltip (charts.js) */
   .chart-tooltip {
-    position:fixed; z-index:99999; background:var(--panel); border:1px solid var(--line);
-    padding:8px 12px; font-size:11px; line-height:1.5; box-shadow:var(--shadow);
+    position:fixed; z-index:99999; background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:8px 12px; font-size:11px; line-height:1.5; box-shadow:var(--shadow-md);
     opacity:0; pointer-events:none; transition:opacity .12s ease; max-width:240px;
   }
   .chart-tooltip.show { opacity:1; }
@@ -254,13 +321,16 @@
   .list-rows { display:flex; flex-direction:column; }
   .list-row {
     display:flex; justify-content:space-between; align-items:center; gap:12px;
-    padding:10px 0; border-bottom:1px solid var(--line); cursor:pointer;
+    padding:10px 8px; margin:0 -8px; border-bottom:1px solid var(--line); border-radius:8px; cursor:pointer;
+    transition:background-color .15s ease;
   }
   .list-row.static { cursor:default; }
+  .list-row:not(.static):hover { background:var(--panel-2); }
   .list-row:last-child { border-bottom:none; }
   .list-row:not(.static):hover .list-title { color:var(--accent-text); }
   .list-title { font-weight:600; font-size:13px; transition:color .12s; }
   .list-sub { color:var(--muted); font-size:11px; margin-top:2px; }
+  .sub { color:var(--muted); font-size:12px; }
   .list-badge {
     font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1px;
     text-transform:uppercase; padding:4px 8px; border-radius:2px; white-space:nowrap;
@@ -288,13 +358,14 @@
   /* listing grid */
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px; }
   .bb-card {
-    background:var(--panel); border:1px solid var(--line); padding:16px;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-md); padding:16px;
     display:flex; flex-direction:column; gap:10px;
-    transition:border-color .15s, transform .15s;
+    box-shadow:var(--shadow-sm), inset 0 1px 0 var(--edge-highlight);
+    transition:border-color .15s, transform .25s cubic-bezier(.4,0,.2,1), box-shadow .25s cubic-bezier(.4,0,.2,1);
     animation: rise .3s ease backwards;
   }
   @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-  .bb-card:hover { border-color:var(--muted); }
+  .bb-card:hover { border-color:var(--muted); transform:translateY(-3px); box-shadow:var(--shadow-md), inset 0 1px 0 var(--edge-highlight); }
   .bb-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
   .bb-id { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:1px; }
   .bb-title { font-weight:600; font-size:15px; line-height:1.3; margin-top:2px; text-transform:uppercase; }
@@ -316,7 +387,7 @@
   /* empty state */
   .empty {
     padding:60px 20px; text-align:center; color:var(--muted);
-    border:1px dashed var(--line); background:var(--panel);
+    border:1px dashed var(--line); border-radius:var(--radius-md); background:var(--panel);
   }
   .empty .icon { font-family:'Bebas Neue',sans-serif; font-size:60px; color:var(--line); letter-spacing:4px; }
   .empty h3 { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:2px; color:var(--text); font-weight:400; margin:12px 0 6px; }
@@ -333,7 +404,8 @@
   .pac-container { z-index:1001; } /* above .modal-back so neighbourhood suggestions aren't hidden behind the modal */
   .modal {
     width:100%; max-width:720px; background:var(--panel); border:1px solid var(--line);
-    box-shadow:var(--shadow); max-height:calc(100vh - 60px);
+    border-radius:var(--radius-lg); overflow:hidden;
+    box-shadow:var(--shadow-lg); max-height:calc(100vh - 60px);
     display:flex; flex-direction:column; animation:pop .25s ease;
   }
   @keyframes pop { from { opacity:0; transform:scale(.97); } to { opacity:1; transform:scale(1); } }
@@ -342,10 +414,10 @@
   .modal-body { padding:18px 22px; overflow-y:auto; flex:1; }
   .modal-foot { padding:14px 22px; border-top:1px solid var(--line); display:flex; gap:10px; justify-content:flex-end; background:var(--panel-2); }
   .x-close {
-    width:32px; height:32px; border:1px solid var(--line); background:var(--panel-2);
-    color:var(--muted); font-size:14px;
+    width:32px; height:32px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2);
+    color:var(--muted); font-size:14px; transition:color .15s ease, border-color .15s ease;
   }
-  .x-close:hover { color:var(--text); }
+  .x-close:hover { color:var(--text); border-color:var(--muted); }
 
   /* form */
   label {
@@ -355,11 +427,14 @@
   }
   label.inline { display:flex; align-items:center; gap:8px; margin:14px 0 0; }
   input, select, textarea {
-    width:100%; background:var(--panel-2); border:1px solid var(--line);
+    width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
     color:var(--text); padding:10px 12px;
     font-family:'DM Sans',sans-serif; font-size:14px;
+    transition:border-color .18s ease, box-shadow .18s ease;
   }
-  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); }
+  input:focus, select:focus, textarea:focus {
+    outline:none; border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
   textarea { resize:vertical; min-height:70px; }
   .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .form-row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
@@ -369,8 +444,8 @@
   .peak-hours { display:flex; gap:3px; flex-wrap:wrap; margin-top:6px; }
   .hr-chip {
     font-family:'JetBrains Mono',monospace; font-size:10px;
-    padding:5px 7px; border:1px solid var(--line); color:var(--muted);
-    background:var(--panel-2); cursor:pointer; user-select:none;
+    padding:5px 7px; border:1px solid var(--line); border-radius:6px; color:var(--muted);
+    background:var(--panel-2); cursor:pointer; user-select:none; transition:color .15s ease, background-color .15s ease;
     min-width:32px; text-align:center;
   }
   .hr-chip:hover { color:var(--text); }
@@ -403,7 +478,7 @@
 
   /* Location intelligence panel */
   .analytics-block {
-    margin-top:18px; border:1px solid var(--line); background:var(--panel-2);
+    margin-top:18px; border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; background:var(--panel-2);
   }
   .analytics-head {
     padding:12px 14px; border-bottom:1px solid var(--line);
@@ -459,7 +534,7 @@
 
   /* NEARBY & TRAFFIC (auto, from Google Places) */
   .nearby-block {
-    margin-top:14px; padding:12px 14px; border:1px solid var(--line); background:var(--panel-2);
+    margin-top:14px; padding:12px 14px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--panel-2);
   }
   .nearby-head {
     display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px;
@@ -480,7 +555,7 @@
   }
   .src-tag.manual { background:var(--amber-bg); color:var(--amber); }
   .src-content {
-    padding:12px 14px; margin-bottom:16px; border:1px solid var(--line); background:var(--panel-2);
+    padding:12px 14px; margin-bottom:16px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--panel-2);
   }
   .src-content.src-hidden { display:none; }
   .src-empty {
@@ -493,7 +568,7 @@
   .req { color:var(--accent-text); }
 
   .format-new {
-    margin-top:-8px; margin-bottom:16px; padding:12px 14px; border:1px solid var(--line);
+    margin-top:-8px; margin-bottom:16px; padding:12px 14px; border:1px solid var(--line); border-radius:var(--radius-sm);
     background:var(--panel-2);
   }
   .format-new-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
@@ -519,7 +594,7 @@
 
   /* PREVIEW */
   .preview-block {
-    margin-top:16px; border:1px solid var(--accent);
+    margin-top:16px; border:1px solid var(--accent); border-radius:var(--radius-sm); overflow:hidden;
     background:var(--panel);
   }
   .preview-head {
@@ -562,18 +637,109 @@
   .photo-preview img { display:block; width:100%; max-height:220px; object-fit:cover; }
 
   /* gate */
-  .gate { max-width:440px; margin:80px auto; text-align:center; padding:44px 26px; background:var(--panel); border:1px solid var(--line); }
+  .gate {
+    max-width:440px; margin:80px auto; text-align:center; padding:44px 26px;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg);
+    box-shadow:var(--shadow-lg), inset 0 1px 0 var(--edge-highlight);
+  }
   .gate h1 { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:2px; font-weight:400; }
   .gate p { color:var(--muted); font-size:13px; margin:12px 0 22px; line-height:1.6; }
 
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(120px);
-    background:var(--accent); color:var(--accent-ink); padding:12px 20px;
-    font-weight:600; font-size:13px; z-index:9999; box-shadow:var(--shadow);
+    background:var(--accent); color:var(--accent-ink); padding:12px 20px; border-radius:var(--radius-md);
+    font-weight:600; font-size:13px; z-index:9999; box-shadow:var(--shadow-lg);
     transition:transform .3s ease; max-width:min(90vw,480px); text-align:center;
   }
   .toast.show { transform:translateX(-50%) translateY(0); }
   .hidden { display:none !important; }
+
+  /* ================= ADMIN CONSOLE (superuser Console tab) ================= */
+  table.con-table { width:100%; border-collapse:collapse; min-width:640px; }
+  table.con-table th {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--muted); text-align:left;
+    padding:12px 14px; border-bottom:1px solid var(--line);
+  }
+  table.con-table td { padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:middle; transition:background-color .15s ease; }
+  table.con-table tr:last-child td { border-bottom:none; }
+  table.con-table tr:hover td { background:var(--panel-2); }
+  .con-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -16px; padding:0 16px; }
+  .con-u-name { font-weight:600; }
+  .con-u-email { color:var(--muted); font-size:12px; }
+  .role {
+    font-family:'JetBrains Mono',monospace; font-size:9px; padding:4px 8px;
+    letter-spacing:1.5px; text-transform:uppercase; border-radius:6px; display:inline-block;
+  }
+  .role.user { background:var(--green-bg); color:var(--green); }
+  .role.provider { background:rgba(95,122,0,.14); color:var(--accent-text); }
+  .role.agent { background:var(--blue-bg); color:var(--blue); }
+  .role.admin { background:var(--amber-bg); color:var(--amber); }
+  .role.superuser { background:var(--red-bg); color:var(--red); }
+  .con-mfa { font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1px; }
+  .con-mfa.on { color:var(--green); }
+  .con-mfa.off { color:var(--muted); }
+  .con-dt { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); white-space:nowrap; }
+  select.role-set {
+    background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text);
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.5px;
+    text-transform:uppercase; padding:6px; cursor:pointer; transition:border-color .18s ease, box-shadow .18s ease;
+  }
+  select.role-set:focus { border-color:var(--accent-text); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .del {
+    color:var(--red); font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1px;
+    text-transform:uppercase; padding:5px 8px; border:1px solid transparent; border-radius:6px;
+    transition:border-color .15s ease, background-color .15s ease;
+  }
+  .del:hover { border-color:var(--red); background:var(--red-bg); }
+
+  .co-type { font-family:'JetBrains Mono',monospace; font-size:9px; padding:4px 8px; letter-spacing:1.5px; text-transform:uppercase; border-radius:6px; background:var(--panel-2); color:var(--muted); }
+  .co-name { font-weight:600; cursor:pointer; transition:color .15s ease; }
+  .co-name:hover { color:var(--accent-text); }
+  .co-new-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+  .co-new-row input, .co-new-row select {
+    background:var(--panel-2); border:1px solid var(--line); border-radius:8px; color:var(--text);
+    padding:9px 10px; font-family:'DM Sans',sans-serif; font-size:13px; width:auto;
+    transition:border-color .18s ease, box-shadow .18s ease;
+  }
+  .co-new-row input { flex:1; min-width:180px; }
+  .co-detail { display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+  .co-detail.show { display:block; }
+  .co-detail h3 { font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:1px; font-weight:400; margin-bottom:10px; }
+  .co-members { list-style:none; margin-bottom:16px; }
+  .co-members li { padding:8px 0; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; font-size:12px; flex-wrap:wrap; }
+  .co-members li:last-child { border-bottom:none; }
+  .co-login-count { font-family:'JetBrains Mono',monospace; color:var(--muted); font-size:11px; margin-left:auto; }
+
+  .con-audit { list-style:none; }
+  .con-audit li { padding:10px 14px; margin:0 -14px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; border-radius:8px; transition:background-color .15s ease; }
+  .con-audit li:hover { background:var(--panel-2); }
+  .con-audit li:last-child { border-bottom:none; }
+  .con-a-act { font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--accent-text); min-width:120px; }
+  .con-a-det { font-size:12px; flex:1; }
+  .con-a-who { color:var(--muted); font-size:11px; }
+
+  .ai-engine-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .ai-engine-status { font-size:12px; color:var(--muted); }
+  .ai-engine-status b { color:var(--text); }
+  .ai-progress-wrap { margin-top:16px; display:none; }
+  .ai-progress-wrap.show { display:block; }
+  .ai-progress-track { height:8px; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .ai-progress-fill {
+    height:100%; width:0%; background:linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 65%, var(--blue)));
+    transition:width .25s ease;
+  }
+  .ai-progress-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); margin-top:6px; letter-spacing:.5px; }
+  .ai-log {
+    list-style:none; margin-top:14px; max-height:280px; overflow-y:auto; border-radius:8px;
+    background:var(--panel-2); border:1px solid var(--line); font-family:'JetBrains Mono',monospace; font-size:11px;
+  }
+  .ai-log li { padding:7px 12px; border-bottom:1px solid var(--line); display:flex; gap:8px; }
+  .ai-log li:last-child { border-bottom:none; }
+  .ai-log li::before { content:'·'; color:var(--accent-text); flex-shrink:0; }
+  .ai-log li.error::before { content:'✗'; color:var(--red); }
+  .ai-log li.error { color:var(--red); }
+  .ai-log li.done::before { content:'✓'; color:var(--green); }
 
   @media (max-width: 760px) {
     header { flex-wrap: wrap; height: auto; min-height: 56px; padding: 10px 14px; gap: 8px 12px; }
@@ -599,31 +765,13 @@
       grid-template-columns: 1fr;
       gap: 2px;
     }
-
-    /* Underline tabs read as flimsy once they're horizontally scrollable —
-       give them a solid track and snap so swiping feels anchored. */
-    .tabs {
-      gap: 4px; padding: 4px; margin-bottom: 20px;
-      background: var(--panel-2); border: 1px solid var(--line); border-bottom: 1px solid var(--line);
-      border-radius: 10px;
-      scroll-snap-type: x proximity; overscroll-behavior-x: contain;
-      -webkit-overflow-scrolling: touch;
-    }
-    .tab {
-      scroll-snap-align: start;
-      padding: 10px 14px; border-radius: 7px;
-      border-bottom: none; margin-bottom: 0;
-    }
-    .tab.active {
-      background: var(--panel); box-shadow: 0 1px 4px rgba(0,0,0,.15);
-    }
   }
 </style>
 </head>
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.25</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.26</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -659,10 +807,12 @@
     <button class="tab hidden" data-view="approved" id="tab-approved">Approved <span class="count" id="cnt-approved">0</span></button>
     <button class="tab hidden" data-view="rejected" id="tab-rejected">Rejected <span class="count" id="cnt-rejected">0</span></button>
     <button class="tab hidden" data-view="all" id="tab-all">All Billboards <span class="count" id="cnt-all">0</span></button>
+    <button class="tab hidden" data-view="console" id="tab-console">⚙ Console</button>
   </div>
 
   <div id="overviewPane"></div>
   <div id="customersPane" class="hidden"></div>
+  <div id="consolePane" class="hidden"></div>
   <div id="grid" class="grid hidden"></div>
 </main>
 
@@ -1431,7 +1581,14 @@ function hydrateSources(ds) {
     if (me.role === 'admin' || me.role === 'superuser') {
       ['tab-pending', 'tab-approved', 'tab-rejected', 'tab-all'].forEach(id => $(id).classList.remove('hidden'));
     }
-    if (me.role === 'admin' || me.role === 'superuser') $('adminConsoleBtn').classList.remove('hidden');
+    // Superusers get the full admin console folded in as a Console tab right
+    // here, so they no longer need to leave to admin.html. Plain admins only
+    // ever had the Users section there, so they still get the external link.
+    if (me.role === 'superuser') {
+      $('tab-console').classList.remove('hidden');
+    } else if (me.role === 'admin') {
+      $('adminConsoleBtn').classList.remove('hidden');
+    }
     // Customers tab: agents manage tenants directly; admins/superusers can
     // audit any company's. Providers don't create billboards for clients
     // they don't own, so it stays out of their nav.
@@ -1472,7 +1629,11 @@ window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); }
 // Live-refresh the Overview tab's charts while it's the active view — the
 // same refresh() a manual action already triggers, just on a timer. Paused
 // on other tabs/hidden tab to avoid pointless fetches.
-setInterval(() => { if (me && currentView === 'overview' && !document.hidden) refresh(); }, 20000);
+setInterval(() => {
+  if (!me || document.hidden) return;
+  if (currentView === 'overview') refresh();
+  else if (currentView === 'console' && consoleSubTab === 'overview') refreshConsoleOverview();
+}, 20000);
 
 // Compatibility no-op so any stray reference doesn't throw
 function renderPeakChips_removed() {}
@@ -1516,7 +1677,8 @@ const VIEW_META = {
   pending: { title: 'REVIEW QUEUE', sub: 'Billboards awaiting your approval. Review carefully — approved listings go live on the public map.', crumb: 'REVIEW QUEUE' },
   approved: { title: 'APPROVED LISTINGS', sub: 'All live billboards across every owner.', crumb: 'APPROVED' },
   rejected: { title: 'REJECTED LISTINGS', sub: 'Sent back to owners with a note. Awaiting resubmission.', crumb: 'REJECTED' },
-  all: { title: 'ALL BILLBOARDS', sub: 'Every listing on the platform, across all owners and states.', crumb: 'ALL BILLBOARDS' }
+  all: { title: 'ALL BILLBOARDS', sub: 'Every listing on the platform, across all owners and states.', crumb: 'ALL BILLBOARDS' },
+  console: { title: 'ADMIN CONSOLE', sub: 'Platform-wide management — users, companies, the AI traffic engine, and the audit log.', crumb: 'CONSOLE' }
 };
 
 function switchView(v) {
@@ -1538,11 +1700,14 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 function renderList() {
   const isOverview = currentView === 'overview';
   const isCustomers = currentView === 'customers';
+  const isConsole = currentView === 'console';
   $('overviewPane').classList.toggle('hidden', !isOverview);
   $('customersPane').classList.toggle('hidden', !isCustomers);
-  $('grid').classList.toggle('hidden', isOverview || isCustomers);
+  $('consolePane').classList.toggle('hidden', !isConsole);
+  $('grid').classList.toggle('hidden', isOverview || isCustomers || isConsole);
   if (isOverview) { renderOverview(); return; }
   if (isCustomers) { renderCustomersPane(); return; }
+  if (isConsole) { renderConsolePane(); return; }
 
   const list = allData[currentView] || [];
   const grid = $('grid');
@@ -1601,10 +1766,17 @@ function fmtCompact(n) {
 // never shifts between renders — renderDonut's live-refresh path (charts.js)
 // updates existing arcs in place by index.
 const STATUS_COLORS = { draft: 'muted', pending: 'amber', approved: 'green', rejected: 'red' };
+// Used by the Console tab's platform-wide Overview sub-tab (superuser only).
+const ROLE_COLORS = { user: 'green', provider: 'accent', agent: 'blue', admin: 'amber', superuser: 'red' };
+const AVAIL_COLORS = { available: 'green', pending: 'amber', booked: 'red' };
+const DENSITY_COLORS = { free: 'green', moderate: 'amber', heavy: 'red' };
 function toSegments(counts, colorMap) {
   return Object.keys(colorMap).map(k => ({
     key: k, label: k.charAt(0).toUpperCase() + k.slice(1), value: counts[k] || 0, colorClass: colorMap[k]
   }));
+}
+function kpiTiles(items) {
+  return items.map(k => '<div class="kpi-tile"><div class="kpi-label">' + esc(k.label) + '</div><div class="kpi-value">' + k.value + '</div></div>').join('');
 }
 function daysAgo(ts) {
   const d = Math.floor((Date.now() - ts) / 86400000);
@@ -2287,6 +2459,351 @@ async function handleCustomerAction(action, id) {
       await renderCustomersPane();
       return;
     }
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------------- admin console (superuser only — folded in from admin.html) ---------------- */
+
+let consoleSubTab = 'overview';
+const CONSOLE_TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'users', label: 'Users' },
+  { id: 'companies', label: 'Companies' },
+  { id: 'ai-engine', label: 'AI Engine' },
+  { id: 'audit', label: 'Audit Log' }
+];
+
+function fmtConTime(ms) {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderConsolePane() {
+  const pane = $('consolePane');
+  pane.innerHTML = `
+    <div class="ov-subtabs">
+      ${CONSOLE_TABS.map(t => `<button class="ov-subtab${consoleSubTab === t.id ? ' active' : ''}" data-constab="${t.id}">${esc(t.label)}</button>`).join('')}
+    </div>
+    <div id="consoleContent"><div class="ov-section"><p style="color:var(--muted)">Loading…</p></div></div>
+  `;
+  pane.querySelectorAll('[data-constab]').forEach(btn => {
+    btn.addEventListener('click', () => { consoleSubTab = btn.dataset.constab; renderConsolePane(); });
+  });
+  if (consoleSubTab === 'overview') loadConsoleOverview();
+  else if (consoleSubTab === 'users') loadConsoleUsers();
+  else if (consoleSubTab === 'companies') loadConsoleCompanies();
+  else if (consoleSubTab === 'ai-engine') loadConsoleAiEngine();
+  else if (consoleSubTab === 'audit') loadConsoleAudit();
+}
+
+/* ---- overview: platform-wide kpis + donuts + region spend ---- */
+async function loadConsoleOverview() {
+  $('consoleContent').innerHTML = `
+    <div class="kpi-grid" id="con-ov-kpis"></div>
+    <div class="donut-grid">
+      <div class="donut-card"><h3>User Roles</h3><div class="donut-box" id="con-donut-roles"></div></div>
+      <div class="donut-card"><h3>Billboard Approval Status</h3><div class="donut-box" id="con-donut-status"></div></div>
+      <div class="donut-card"><h3>Billboard Availability <small>approved only</small></h3><div class="donut-box" id="con-donut-avail"></div></div>
+      <div class="donut-card"><h3>Company Types</h3><div class="donut-box" id="con-donut-companies"></div></div>
+      <div class="donut-card"><h3>Traffic Density <small>latest reading / billboard</small></h3><div class="donut-box" id="con-donut-density"></div></div>
+    </div>
+    <div class="ov-section">
+      <h3>Booked Revenue by Region</h3>
+      <div class="bar-list" id="con-region-bars"></div>
+    </div>
+  `;
+  await refreshConsoleOverview();
+}
+
+// Called both on first load and by the shared 20s live-refresh interval —
+// bails out silently if the Console tab (or its Overview sub-tab) isn't the
+// one currently on screen, or if its DOM hasn't been built yet.
+async function refreshConsoleOverview() {
+  if (currentView !== 'console' || consoleSubTab !== 'overview' || !$('con-ov-kpis')) return;
+  try {
+    const d = await api('admin/stats/overview');
+    const totalUsers = Object.values(d.roles).reduce((s, n) => s + n, 0);
+    const totalCompanies = d.companies.provider + d.companies.agency;
+
+    $('con-ov-kpis').innerHTML = kpiTiles([
+      { label: 'Total Users', value: totalUsers },
+      { label: 'Total Companies', value: totalCompanies },
+      { label: 'Total Billboards', value: d.companies.totalBillboards },
+      { label: 'Booked Revenue /mo', value: fmtMoney(d.revenue.booked) },
+      { label: 'Potential Revenue /mo', value: fmtMoney(d.revenue.potential) }
+    ]);
+
+    renderDonut($('con-donut-roles'), toSegments(d.roles, ROLE_COLORS), { centerLabel: 'Users' });
+    renderDonut($('con-donut-status'), toSegments(d.billboardStatus, STATUS_COLORS), { centerLabel: 'Billboards' });
+    renderDonut($('con-donut-avail'), toSegments(d.billboardAvailability, AVAIL_COLORS), { centerLabel: 'Approved' });
+    renderDonut($('con-donut-companies'), [
+      { key: 'provider', label: 'Provider', value: d.companies.provider, colorClass: 'accent' },
+      { key: 'agency', label: 'Agency', value: d.companies.agency, colorClass: 'blue' }
+    ], { centerLabel: 'Companies' });
+    renderDonut($('con-donut-density'), toSegments(d.trafficDensity, DENSITY_COLORS), { centerLabel: 'Readings' });
+
+    const maxSpend = Math.max(1, ...d.regionSpend.map(r => r.spend));
+    $('con-region-bars').innerHTML = d.regionSpend.length
+      ? d.regionSpend.map(r => barRow(r.area, r.spend, maxSpend, 'accent', fmtMoney)).join('')
+      : '<div style="color:var(--muted);font-size:12px">No booked revenue yet.</div>';
+    animateIn($('con-region-bars'));
+    wireTooltips($('con-region-bars'));
+  } catch (e) { toast(e.message); }
+}
+
+/* ---- users: role changes + delete ---- */
+async function loadConsoleUsers() {
+  $('consoleContent').innerHTML = `
+    <div class="ov-section">
+      <h3>Users</h3>
+      <div class="con-scroll">
+        <table class="con-table">
+          <thead><tr><th>User</th><th>Role</th><th>MFA</th><th>Last Login</th><th>Created</th><th></th></tr></thead>
+          <tbody id="con-user-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  await refreshConsoleUsers();
+}
+
+async function refreshConsoleUsers() {
+  try {
+    const d = await api('admin/users');
+    $('con-user-rows').innerHTML = d.users.map(u => {
+      const roleCell = '<select class="role-set" data-id="' + u.id + '">' +
+          ['user', 'provider', 'agent', 'admin', 'superuser'].map(r =>
+            '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>').join('') +
+        '</select>';
+      const delCell = u.id !== me.id
+        ? '<button class="del" data-del="' + u.id + '" data-email="' + esc(u.email) + '">Delete</button>' : '';
+      return '<tr>' +
+        '<td><div class="con-u-name">' + esc(u.name) + (u.id === me.id ? ' <span class="con-dt">(you)</span>' : '') + '</div><div class="con-u-email">' + esc(u.email) + '</div></td>' +
+        '<td>' + roleCell + '</td>' +
+        '<td><span class="con-mfa ' + (u.mfaEnabled ? 'on' : 'off') + '">' + (u.mfaEnabled ? '● ACTIVE' : '○ OFF') + '</span></td>' +
+        '<td class="con-dt">' + fmtConTime(u.lastLogin) + '</td>' +
+        '<td class="con-dt">' + fmtConTime(u.createdAt) + '</td>' +
+        '<td>' + delCell + '</td>' +
+      '</tr>';
+    }).join('');
+
+    document.querySelectorAll('#con-user-rows .role-set').forEach(sel => sel.addEventListener('change', async () => {
+      try {
+        await api('admin/role', { userId: sel.dataset.id, role: sel.value });
+        toast('Role updated to ' + sel.value);
+        await refreshConsoleUsers();
+      } catch (e) { toast(e.message); await refreshConsoleUsers(); }
+    }));
+    document.querySelectorAll('#con-user-rows .del').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Delete ' + b.dataset.email + '? This cannot be undone.')) return;
+      try {
+        await api('admin/users/delete', { userId: b.dataset.del });
+        toast('User deleted');
+        await refreshConsoleUsers();
+      } catch (e) { toast(e.message); }
+    }));
+  } catch (e) { toast(e.message); }
+}
+
+/* ---- companies: create + list + drill-down detail ---- */
+async function loadConsoleCompanies() {
+  $('consoleContent').innerHTML = `
+    <div class="ov-section">
+      <h3>Companies</h3>
+      <div class="co-new-row">
+        <input id="con-co-new-name" placeholder="New company name" />
+        <select id="con-co-new-type"><option value="provider">Provider</option><option value="agency">Agency</option></select>
+        <button class="btn sm" id="con-coCreateBtn">+ Add Company</button>
+      </div>
+      <div class="con-scroll">
+        <table class="con-table">
+          <thead><tr><th>Company</th><th>Type</th><th>Members</th><th>Billboards</th><th>Total Logins</th></tr></thead>
+          <tbody id="con-co-rows"></tbody>
+        </table>
+      </div>
+      <div class="co-detail" id="con-co-detail">
+        <h3 id="con-co-detail-title"></h3>
+        <div class="kpi-grid" id="con-co-detail-kpis" style="margin-bottom:16px"></div>
+        <div class="donut-card" style="margin-bottom:16px">
+          <h3>Approval Breakdown</h3>
+          <div class="donut-box" id="con-co-detail-donut"></div>
+        </div>
+        <ul class="co-members" id="con-co-detail-members"></ul>
+        <ul class="con-audit" id="con-co-detail-audit"></ul>
+      </div>
+    </div>
+  `;
+
+  $('con-coCreateBtn').addEventListener('click', async () => {
+    const name = $('con-co-new-name').value.trim();
+    if (!name) { toast('Enter a company name first.'); return; }
+    try {
+      await api('admin/companies/create', { name, type: $('con-co-new-type').value });
+      $('con-co-new-name').value = '';
+      toast('Company added');
+      await refreshConsoleCompanies();
+    } catch (e) { toast(e.message); }
+  });
+
+  await refreshConsoleCompanies();
+}
+
+async function refreshConsoleCompanies() {
+  try {
+    const d = await api('admin/companies');
+    $('con-co-rows').innerHTML = (d.companies || []).map(c =>
+      '<tr>' +
+        '<td><span class="co-name" data-co="' + c.id + '">' + esc(c.name) + '</span></td>' +
+        '<td><span class="co-type">' + esc(c.type) + '</span></td>' +
+        '<td>' + c.memberCount + '</td>' +
+        '<td>' + c.billboardCount + '</td>' +
+        '<td>' + c.totalLogins + '</td>' +
+      '</tr>'
+    ).join('') || '<tr><td colspan="5" style="color:var(--muted)">No companies yet.</td></tr>';
+
+    document.querySelectorAll('#con-co-rows .co-name').forEach(elm =>
+      elm.addEventListener('click', () => loadConsoleCompanyDetail(elm.dataset.co, elm.textContent)));
+  } catch (e) { toast(e.message); }
+}
+
+async function loadConsoleCompanyDetail(id, name) {
+  const detail = $('con-co-detail');
+  detail.classList.add('show');
+  $('con-co-detail-title').textContent = name;
+  $('con-co-detail-members').innerHTML = '<li>Loading…</li>';
+  $('con-co-detail-audit').innerHTML = '';
+  try {
+    const d = await api('admin/companies/' + id);
+    $('con-co-detail-kpis').innerHTML = kpiTiles([
+      { label: 'Total Billboards', value: d.stats.total },
+      { label: 'Available', value: d.stats.available },
+      { label: 'Booked', value: d.stats.booked },
+      { label: 'Booked Revenue /mo', value: fmtMoney(d.stats.revenue) },
+      { label: 'Expiring Soon', value: d.stats.expiringSoon }
+    ]);
+    renderDonut($('con-co-detail-donut'), toSegments(d.stats.approvalBreakdown, STATUS_COLORS), { centerLabel: 'Billboards' });
+    $('con-co-detail-members').innerHTML = (d.members || []).map(m =>
+      '<li><span class="role ' + m.role + '">' + m.role + '</span> ' + esc(m.name) + ' <span class="con-u-email">' + esc(m.email) + '</span>' +
+      '<span class="co-login-count">' + m.loginCount + ' login' + (m.loginCount === 1 ? '' : 's') + ' · last ' + fmtConTime(m.last_login) + '</span></li>'
+    ).join('') || '<li style="color:var(--muted)">No members yet.</li>';
+    $('con-co-detail-audit').innerHTML = (d.audit || []).map(ev =>
+      '<li><span class="con-a-act">' + esc(ev.action) + '</span>' +
+      '<span class="con-a-det">' + esc(ev.detail || '') + '</span>' +
+      '<span class="con-a-who">' + esc(ev.email || 'system') + ' · ' + fmtConTime(ev.created_at) + '</span></li>'
+    ).join('') || '<li><span class="con-a-det" style="color:var(--muted)">No audit events for this company yet.</span></li>';
+  } catch (e) { toast(e.message); }
+}
+
+/* ---- ai engine: on-demand run with a streamed progress log ---- */
+async function loadConsoleAiEngine() {
+  $('consoleContent').innerHTML = `
+    <div class="ov-section">
+      <p class="sub" style="margin-bottom:14px">Analyzes queued traffic screenshots with Claude vision and writes congestion scores. Runs on demand — each run calls the Anthropic API once per pending snapshot.</p>
+      <div class="ai-engine-row">
+        <button class="btn sm" id="con-runAiBtn">Run AI Engine</button>
+        <span class="ai-engine-status" id="con-aiEngineStatus">Checking pending snapshots…</span>
+      </div>
+      <div class="ai-progress-wrap" id="con-aiProgressWrap">
+        <div class="ai-progress-track"><div class="ai-progress-fill" id="con-aiProgressFill"></div></div>
+        <div class="ai-progress-label" id="con-aiProgressLabel">0 / 0</div>
+        <ul class="ai-log" id="con-aiLog"></ul>
+      </div>
+    </div>
+  `;
+
+  async function refreshAiStatus() {
+    try {
+      const d = await api('admin/ai-engine/status');
+      $('con-aiEngineStatus').innerHTML = '<b>' + d.pending + '</b> pending snapshot' + (d.pending === 1 ? '' : 's') + ' queued for analysis';
+    } catch (e) {
+      $('con-aiEngineStatus').textContent = 'Could not load pending count: ' + e.message;
+    }
+  }
+  await refreshAiStatus();
+
+  function logLine(message, cls) {
+    const li = document.createElement('li');
+    if (cls) li.className = cls;
+    li.textContent = message;
+    const log = $('con-aiLog');
+    log.appendChild(li);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  $('con-runAiBtn').addEventListener('click', async () => {
+    const btn = $('con-runAiBtn');
+    btn.disabled = true;
+    $('con-aiLog').innerHTML = '';
+    $('con-aiProgressWrap').classList.add('show');
+    $('con-aiProgressFill').style.width = '0%';
+    $('con-aiProgressLabel').textContent = 'Starting…';
+    let processed = 0, failed = 0;
+
+    try {
+      const res = await fetch('/api/admin/ai-engine/run', { method: 'POST' });
+      if (!res.ok || !res.body) {
+        let msg = 'Request failed (' + res.status + ')';
+        try { msg = (await res.json()).error || msg; } catch (e) {}
+        throw new Error(msg);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop(); // last (possibly incomplete) line stays in the buffer
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const ev = JSON.parse(line);
+          if (ev.type === 'start') {
+            $('con-aiProgressLabel').textContent = '0 / ' + ev.total;
+          } else if (ev.type === 'log') {
+            logLine(ev.message, ev.error ? 'error' : (ev.done === ev.total && ev.total ? 'done' : ''));
+            if (ev.total) {
+              $('con-aiProgressFill').style.width = Math.round((ev.done / ev.total) * 100) + '%';
+              $('con-aiProgressLabel').textContent = ev.done + ' / ' + ev.total;
+            }
+          } else if (ev.type === 'complete') {
+            processed = ev.processed; failed = ev.failed;
+            $('con-aiProgressFill').style.width = '100%';
+            logLine('Done — ' + processed + ' processed' + (failed ? ', ' + failed + ' failed' : '') + '.', 'done');
+          } else if (ev.type === 'error') {
+            logLine('✗ ' + ev.message, 'error');
+          }
+        }
+      }
+      toast('AI engine run complete — ' + processed + ' processed' + (failed ? ', ' + failed + ' failed' : ''));
+      await refreshAiStatus();
+    } catch (e) {
+      logLine('✗ ' + e.message, 'error');
+      toast(e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+/* ---- audit log ---- */
+async function loadConsoleAudit() {
+  $('consoleContent').innerHTML = `
+    <div class="ov-section">
+      <h3>Audit Log</h3>
+      <p class="sub" style="margin-bottom:14px">Last 100 security events — logins, failures, role changes, MFA activity.</p>
+      <ul class="con-audit" id="con-audit-list"></ul>
+    </div>
+  `;
+  try {
+    const d = await api('admin/audit');
+    $('con-audit-list').innerHTML = d.events.map(ev =>
+      '<li><span class="con-a-act">' + esc(ev.action) + '</span>' +
+      '<span class="con-a-det">' + esc(ev.detail || '') + '</span>' +
+      '<span class="con-a-who">' + esc(ev.email || 'system') + ' · ' + fmtConTime(ev.created_at) + '</span></li>'
+    ).join('') || '<li><span class="con-a-det" style="color:var(--muted)">No events yet.</span></li>';
   } catch (e) { toast(e.message); }
 }
 
