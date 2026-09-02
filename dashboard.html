@@ -97,7 +97,16 @@
   .pill:hover { color:var(--text); border-color:var(--muted); box-shadow:var(--shadow-xs); transform:translateY(-1px); }
   .pill.static { cursor:default; }
   .pill.static:hover { color:var(--muted); border-color:var(--line); box-shadow:none; transform:none; }
-  #whoami { max-width:38vw; overflow:hidden; text-overflow:ellipsis; }
+  #whoami {
+    max-width:38vw; overflow:hidden; text-overflow:ellipsis;
+    display:inline-flex; align-items:center; gap:7px;
+  }
+  #whoami::before { content:''; width:7px; height:7px; border-radius:50%; flex-shrink:0; background:var(--muted); }
+  #whoami[data-role="user"]::before { background:var(--green); }
+  #whoami[data-role="provider"]::before { background:var(--accent-text); }
+  #whoami[data-role="agent"]::before { background:var(--blue); }
+  #whoami[data-role="admin"]::before { background:var(--amber); }
+  #whoami[data-role="superuser"]::before { background:var(--red); }
 
   main { max-width:1200px; margin:0 auto; padding:24px 20px 60px; }
 
@@ -144,6 +153,7 @@
     color:var(--muted); font-size:9px;
   }
   .tab.active .count { color:var(--accent-text); border-color:var(--accent-text); }
+  .tab-sep { width:1px; align-self:stretch; margin:4px 2px; background:var(--line); flex-shrink:0; }
 
   /* states */
   .approval {
@@ -771,12 +781,11 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.27</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.28</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
     <button class="pill" id="themeBtn">◑ DARK</button>
-    <button class="pill hidden" id="adminConsoleBtn" onclick="location.href='admin.html'">⚙ Admin Console</button>
     <button class="pill" onclick="location.href='index.html'">Map</button>
     <button class="pill" onclick="location.href='login.html'">Account</button>
   </div>
@@ -803,6 +812,7 @@
     <button class="tab active" data-view="overview">Overview</button>
     <button class="tab" data-view="mine">My Billboards <span class="count" id="cnt-mine">0</span></button>
     <button class="tab hidden" data-view="customers" id="tab-customers">Customers <span class="count" id="cnt-customers">0</span></button>
+    <span class="tab-sep hidden" id="tabDivider" aria-hidden="true"></span>
     <button class="tab hidden" data-view="pending" id="tab-pending">Review Queue <span class="count" id="cnt-pending">0</span></button>
     <button class="tab hidden" data-view="approved" id="tab-approved">Approved <span class="count" id="cnt-approved">0</span></button>
     <button class="tab hidden" data-view="rejected" id="tab-rejected">Rejected <span class="count" id="cnt-rejected">0</span></button>
@@ -1574,20 +1584,19 @@ function hydrateSources(ds) {
       return;
     }
     $('whoami').textContent = me.email.split('@')[0].toUpperCase() + ' · ' + me.role.toUpperCase();
+    $('whoami').dataset.role = me.role;
     $('gate').classList.add('hidden');
     $('main').classList.remove('hidden');
 
     // Admins get the extra queue tabs; everyone gets Overview + My Billboards
     if (me.role === 'admin' || me.role === 'superuser') {
-      ['tab-pending', 'tab-approved', 'tab-rejected', 'tab-all'].forEach(id => $(id).classList.remove('hidden'));
-    }
-    // Superusers get the full admin console folded in as a Console tab right
-    // here, so they no longer need to leave to admin.html. Plain admins only
-    // ever had the Users section there, so they still get the external link.
-    if (me.role === 'superuser') {
+      ['tab-pending', 'tab-approved', 'tab-rejected', 'tab-all', 'tabDivider'].forEach(id => $(id).classList.remove('hidden'));
+      // Console tab: superusers get the full platform console (users,
+      // companies, AI engine, audit log); plain admins only get the Users
+      // sub-tab, read-only — the same scope admin.html used to give them,
+      // now folded into the same nav instead of a separate page.
       $('tab-console').classList.remove('hidden');
-    } else if (me.role === 'admin') {
-      $('adminConsoleBtn').classList.remove('hidden');
+      if (me.role === 'admin') consoleSubTab = 'users';
     }
     // Customers tab: agents manage tenants directly; admins/superusers can
     // audit any company's. Providers don't create billboards for clients
@@ -1605,11 +1614,18 @@ function hydrateSources(ds) {
     // Deep link from the public map's "Edit" button (index.html) —
     // ?edit=<billboardId> jumps straight into that listing's edit form
     // instead of duplicating a second edit UI inside the map page.
-    const deepLinkId = new URLSearchParams(location.search).get('edit');
+    const params = new URLSearchParams(location.search);
+    const deepLinkId = params.get('edit');
     const deepLinkBb = deepLinkId && allData.mine.find(b => b.id === deepLinkId);
+    // Deep link from the account menu's "Admin Console" item (index.html,
+    // login.html) — ?view=console jumps straight to the Console tab, same
+    // idea as ?edit above, for whichever sub-tab the role has access to.
+    const deepLinkView = params.get('view');
     if (deepLinkBb) {
       switchView('mine');
       openEdit(deepLinkBb);
+    } else if (deepLinkView === 'console' && !$('tab-console').classList.contains('hidden')) {
+      switchView('console');
     } else {
       switchView('overview');
     }
@@ -1686,9 +1702,13 @@ function switchView(v) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
   const meta = VIEW_META[v];
   $('pageTitle').textContent = meta.title;
-  $('pageSub').textContent = (v === 'overview' && (me.role === 'admin' || me.role === 'superuser'))
-    ? 'Platform-wide inventory, utilization, and revenue across every provider.'
-    : meta.sub;
+  if (v === 'overview' && (me.role === 'admin' || me.role === 'superuser')) {
+    $('pageSub').textContent = 'Platform-wide inventory, utilization, and revenue across every provider.';
+  } else if (v === 'console' && me.role !== 'superuser') {
+    $('pageSub').textContent = 'User accounts across the platform. Sign in as a superuser for companies, the AI engine, and the audit log.';
+  } else {
+    $('pageSub').textContent = meta.sub;
+  }
   $('crumb').textContent = meta.crumb;
   // Only "mine" shows the Add button, and only for roles that can create new
   // billboards (agents manage existing inventory, not add new listings).
@@ -2462,16 +2482,20 @@ async function handleCustomerAction(action, id) {
   } catch (e) { toast(e.message); }
 }
 
-/* ---------------- admin console (superuser only — folded in from admin.html) ---------------- */
+/* ---------------- admin console (single source of truth for platform admin —
+   superusers get every sub-tab, plain admins get read-only Users only) ---------------- */
 
 let consoleSubTab = 'overview';
-const CONSOLE_TABS = [
+const ALL_CONSOLE_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'users', label: 'Users' },
   { id: 'companies', label: 'Companies' },
   { id: 'ai-engine', label: 'AI Engine' },
   { id: 'audit', label: 'Audit Log' }
 ];
+function consoleTabs() {
+  return me.role === 'superuser' ? ALL_CONSOLE_TABS : ALL_CONSOLE_TABS.filter(t => t.id === 'users');
+}
 
 function fmtConTime(ms) {
   if (!ms) return '—';
@@ -2481,10 +2505,11 @@ function fmtConTime(ms) {
 
 function renderConsolePane() {
   const pane = $('consolePane');
+  const tabs = consoleTabs();
   pane.innerHTML = `
-    <div class="ov-subtabs">
-      ${CONSOLE_TABS.map(t => `<button class="ov-subtab${consoleSubTab === t.id ? ' active' : ''}" data-constab="${t.id}">${esc(t.label)}</button>`).join('')}
-    </div>
+    ${tabs.length > 1 ? `<div class="ov-subtabs">
+      ${tabs.map(t => `<button class="ov-subtab${consoleSubTab === t.id ? ' active' : ''}" data-constab="${t.id}">${esc(t.label)}</button>`).join('')}
+    </div>` : `<div class="sub" style="margin-bottom:16px">Viewing as admin — role changes and platform stats require a superuser account.</div>`}
     <div id="consoleContent"><div class="ov-section"><p style="color:var(--muted)">Loading…</p></div></div>
   `;
   pane.querySelectorAll('[data-constab]').forEach(btn => {
@@ -2556,7 +2581,7 @@ async function refreshConsoleOverview() {
 async function loadConsoleUsers() {
   $('consoleContent').innerHTML = `
     <div class="ov-section">
-      <h3>Users</h3>
+      <h3>Users <small>all registered accounts</small></h3>
       <div class="con-scroll">
         <table class="con-table">
           <thead><tr><th>User</th><th>Role</th><th>MFA</th><th>Last Login</th><th>Created</th><th></th></tr></thead>
@@ -2571,12 +2596,15 @@ async function loadConsoleUsers() {
 async function refreshConsoleUsers() {
   try {
     const d = await api('admin/users');
+    const superMode = me.role === 'superuser';
     $('con-user-rows').innerHTML = d.users.map(u => {
-      const roleCell = '<select class="role-set" data-id="' + u.id + '">' +
-          ['user', 'provider', 'agent', 'admin', 'superuser'].map(r =>
-            '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>').join('') +
-        '</select>';
-      const delCell = u.id !== me.id
+      const roleCell = superMode
+        ? '<select class="role-set" data-id="' + u.id + '">' +
+            ['user', 'provider', 'agent', 'admin', 'superuser'].map(r =>
+              '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>').join('') +
+          '</select>'
+        : '<span class="role ' + u.role + '">' + u.role + '</span>';
+      const delCell = superMode && u.id !== me.id
         ? '<button class="del" data-del="' + u.id + '" data-email="' + esc(u.email) + '">Delete</button>' : '';
       return '<tr>' +
         '<td><div class="con-u-name">' + esc(u.name) + (u.id === me.id ? ' <span class="con-dt">(you)</span>' : '') + '</div><div class="con-u-email">' + esc(u.email) + '</div></td>' +

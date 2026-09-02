@@ -1,5 +1,5 @@
 /* ================================================================
-   Shared chart primitives for admin.html + dashboard.html.
+   Shared chart primitives for dashboard.html (owner views + the admin console).
    No external chart library — plain SVG (donut) and CSS transitions
    (bars) so everything stays on-brand and dependency-free. Loaded via
    a plain <script src="/charts.js"> before each page's own inline

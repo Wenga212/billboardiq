@@ -1,0 +1,4 @@
+# admin.html was folded into dashboard.html's Console tab — keep old
+# bookmarks/links working instead of 404ing.
+/admin.html   /dashboard.html?view=console   301
+/admin        /dashboard.html?view=console   301

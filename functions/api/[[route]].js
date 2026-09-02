@@ -789,8 +789,9 @@ export async function onRequest(context) {
 
     // Platform-wide aggregates for the admin console's overview charts
     // (role/company/billboard/traffic breakdowns, revenue, region spend).
-    // Polled every ~20s by admin.html — cheap GROUP BY queries, no joins
-    // across the full billboards table beyond what's already indexed.
+    // Polled every ~20s by the dashboard's Console tab — cheap GROUP BY
+    // queries, no joins across the full billboards table beyond what's
+    // already indexed.
     if (path === 'admin/stats/overview' && method === 'GET') {
       if (me.role !== 'superuser') return bad('Superuser access required', 403);
 
@@ -1300,8 +1301,8 @@ export async function onRequest(context) {
 // transaction here, same non-atomic style as the rest of this file).
 // Inventory/revenue/approval snapshot for one company — shared by the
 // company's own dashboard.html (company/dashboard, scoped to me.company_id)
-// and the superuser drill-down in admin.html (admin/companies/<id>, scoped
-// to an arbitrary company id).
+// and the superuser drill-down in the Console tab (admin/companies/<id>,
+// scoped to an arbitrary company id).
 async function computeCompanyStats(env, companyId) {
   const totals = await env.DB.prepare(
     `SELECT
