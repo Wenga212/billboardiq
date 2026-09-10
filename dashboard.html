@@ -732,24 +732,6 @@
   .ai-engine-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .ai-engine-status { font-size:12px; color:var(--muted); }
   .ai-engine-status b { color:var(--text); }
-  .ai-progress-wrap { margin-top:16px; display:none; }
-  .ai-progress-wrap.show { display:block; }
-  .ai-progress-track { height:8px; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
-  .ai-progress-fill {
-    height:100%; width:0%; background:linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 65%, var(--blue)));
-    transition:width .25s ease;
-  }
-  .ai-progress-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); margin-top:6px; letter-spacing:.5px; }
-  .ai-log {
-    list-style:none; margin-top:14px; max-height:280px; overflow-y:auto; border-radius:8px;
-    background:var(--panel-2); border:1px solid var(--line); font-family:'JetBrains Mono',monospace; font-size:11px;
-  }
-  .ai-log li { padding:7px 12px; border-bottom:1px solid var(--line); display:flex; gap:8px; }
-  .ai-log li:last-child { border-bottom:none; }
-  .ai-log li::before { content:'·'; color:var(--accent-text); flex-shrink:0; }
-  .ai-log li.error::before { content:'✗'; color:var(--red); }
-  .ai-log li.error { color:var(--red); }
-  .ai-log li.done::before { content:'✓'; color:var(--green); }
 
   @media (max-width: 760px) {
     header { flex-wrap: wrap; height: auto; min-height: 56px; padding: 10px 14px; gap: 8px 12px; }
@@ -781,7 +763,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.29</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.30</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -2490,7 +2472,7 @@ const ALL_CONSOLE_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'users', label: 'Users' },
   { id: 'companies', label: 'Companies' },
-  { id: 'ai-engine', label: 'AI Engine' },
+  { id: 'test-data', label: 'Test Data' },
   { id: 'audit', label: 'Audit Log' }
 ];
 function consoleTabs() {
@@ -2518,7 +2500,7 @@ function renderConsolePane() {
   if (consoleSubTab === 'overview') loadConsoleOverview();
   else if (consoleSubTab === 'users') loadConsoleUsers();
   else if (consoleSubTab === 'companies') loadConsoleCompanies();
-  else if (consoleSubTab === 'ai-engine') loadConsoleAiEngine();
+  else if (consoleSubTab === 'test-data') loadConsoleTestData();
   else if (consoleSubTab === 'audit') loadConsoleAudit();
 }
 
@@ -2724,91 +2706,48 @@ async function loadConsoleCompanyDetail(id, name) {
 }
 
 /* ---- ai engine: on-demand run with a streamed progress log ---- */
-async function loadConsoleAiEngine() {
+async function loadConsoleTestData() {
   $('consoleContent').innerHTML = `
     <div class="ov-section">
-      <p class="sub" style="margin-bottom:14px">Analyzes queued traffic screenshots with Claude vision and writes congestion scores. Runs on demand — each run calls the Anthropic API once per pending snapshot.</p>
+      <p class="sub" style="margin-bottom:14px">Seeds a handful of clearly-marked demo companies, billboards, and traffic history for exercising this console — never shown on the public marketplace, never sampled by the real traffic engine, never billed against the real Google Routes API. Toggle off to remove it all again.</p>
       <div class="ai-engine-row">
-        <button class="btn sm" id="con-runAiBtn">Run AI Engine</button>
-        <span class="ai-engine-status" id="con-aiEngineStatus">Checking pending snapshots…</span>
-      </div>
-      <div class="ai-progress-wrap" id="con-aiProgressWrap">
-        <div class="ai-progress-track"><div class="ai-progress-fill" id="con-aiProgressFill"></div></div>
-        <div class="ai-progress-label" id="con-aiProgressLabel">0 / 0</div>
-        <ul class="ai-log" id="con-aiLog"></ul>
+        <button class="btn sm" id="con-testDataBtn">Loading…</button>
+        <span class="ai-engine-status" id="con-testDataStatus">Checking…</span>
       </div>
     </div>
   `;
 
-  async function refreshAiStatus() {
+  async function refreshStatus() {
+    const btn = $('con-testDataBtn');
     try {
-      const d = await api('admin/ai-engine/status');
-      $('con-aiEngineStatus').innerHTML = '<b>' + d.pending + '</b> pending snapshot' + (d.pending === 1 ? '' : 's') + ' queued for analysis';
+      const d = await api('admin/test-data/status');
+      if (d.enabled) {
+        $('con-testDataStatus').innerHTML = '<b>ON</b> — ' + d.companies + ' demo compan' + (d.companies === 1 ? 'y' : 'ies') + ', ' + d.billboards + ' billboard' + (d.billboards === 1 ? '' : 's');
+        btn.textContent = 'Disable & Remove Test Data';
+        btn.dataset.action = 'disable';
+      } else {
+        $('con-testDataStatus').textContent = 'OFF — no simulated data seeded';
+        btn.textContent = 'Enable Simulated Test Data';
+        btn.dataset.action = 'enable';
+      }
     } catch (e) {
-      $('con-aiEngineStatus').textContent = 'Could not load pending count: ' + e.message;
+      $('con-testDataStatus').textContent = 'Could not load status: ' + e.message;
     }
   }
-  await refreshAiStatus();
+  await refreshStatus();
 
-  function logLine(message, cls) {
-    const li = document.createElement('li');
-    if (cls) li.className = cls;
-    li.textContent = message;
-    const log = $('con-aiLog');
-    log.appendChild(li);
-    log.scrollTop = log.scrollHeight;
-  }
-
-  $('con-runAiBtn').addEventListener('click', async () => {
-    const btn = $('con-runAiBtn');
+  $('con-testDataBtn').addEventListener('click', async () => {
+    const btn = $('con-testDataBtn');
+    const action = btn.dataset.action;
+    if (action === 'disable' && !confirm('Remove all simulated test data? This deletes the demo companies, billboards, and traffic history seeded for testing.')) return;
     btn.disabled = true;
-    $('con-aiLog').innerHTML = '';
-    $('con-aiProgressWrap').classList.add('show');
-    $('con-aiProgressFill').style.width = '0%';
-    $('con-aiProgressLabel').textContent = 'Starting…';
-    let processed = 0, failed = 0;
-
     try {
-      const res = await fetch('/api/admin/ai-engine/run', { method: 'POST' });
-      if (!res.ok || !res.body) {
-        let msg = 'Request failed (' + res.status + ')';
-        try { msg = (await res.json()).error || msg; } catch (e) {}
-        throw new Error(msg);
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop(); // last (possibly incomplete) line stays in the buffer
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          const ev = JSON.parse(line);
-          if (ev.type === 'start') {
-            $('con-aiProgressLabel').textContent = '0 / ' + ev.total;
-          } else if (ev.type === 'log') {
-            logLine(ev.message, ev.error ? 'error' : (ev.done === ev.total && ev.total ? 'done' : ''));
-            if (ev.total) {
-              $('con-aiProgressFill').style.width = Math.round((ev.done / ev.total) * 100) + '%';
-              $('con-aiProgressLabel').textContent = ev.done + ' / ' + ev.total;
-            }
-          } else if (ev.type === 'complete') {
-            processed = ev.processed; failed = ev.failed;
-            $('con-aiProgressFill').style.width = '100%';
-            logLine('Done — ' + processed + ' processed' + (failed ? ', ' + failed + ' failed' : '') + '.', 'done');
-          } else if (ev.type === 'error') {
-            logLine('✗ ' + ev.message, 'error');
-          }
-        }
-      }
-      toast('AI engine run complete — ' + processed + ' processed' + (failed ? ', ' + failed + ' failed' : ''));
-      await refreshAiStatus();
+      const d = await api('admin/test-data/' + action, {});
+      toast(action === 'enable'
+        ? (d.alreadyEnabled ? 'Test data already enabled.' : 'Seeded ' + d.companies + ' demo companies, ' + d.billboards + ' billboards.')
+        : (d.alreadyDisabled ? 'Test data already off.' : 'Removed ' + d.companies + ' demo companies, ' + d.billboards + ' billboards.'));
+      await refreshStatus();
     } catch (e) {
-      logLine('✗ ' + e.message, 'error');
       toast(e.message);
     } finally {
       btn.disabled = false;
