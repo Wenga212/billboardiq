@@ -31,9 +31,9 @@
      POST admin/role           → superuser
      POST admin/users/delete   → superuser
      GET  admin/audit          → superuser
-     GET  admin/ai-engine/status → superuser, pending snapshot count
-     POST admin/ai-engine/run  → superuser, streams NDJSON progress — analyzes
-                                  queued pending_snapshots with Claude vision
+     GET  admin/test-data/status → superuser, whether simulated demo data is currently seeded
+     POST admin/test-data/enable → superuser, seeds demo companies/billboards/traffic for testing
+     POST admin/test-data/disable → superuser, removes all simulated demo data
      GET  admin/companies      → superuser, company list + aggregate stats
      POST admin/companies/create → superuser, pre-onboard a company
      GET  admin/companies/<id> → superuser, members + per-user login count + audit slice + inventory/revenue stats
@@ -62,7 +62,6 @@ const PUBLISH_ROLES = ['provider', 'admin', 'superuser']; // who can add brand-n
 const MANAGE_INVENTORY_ROLES = ['provider', 'agent', 'admin', 'superuser']; // who can edit/tag a company's existing inventory
 const COMPANY_ROLES = ['provider', 'agent']; // roles that require a company at signup
 const EXPIRING_SOON_MS = 30 * 86400000; // booking_end within this window counts as "expiring soon" on the dashboard
-const CLAUDE_MODEL = 'claude-opus-4-8';
 const OWNER_NOTIFY_EMAIL = 'wenga212@gmail.com';
 
 const enc = new TextEncoder();
@@ -249,122 +248,128 @@ async function notifyOwnerOfNewAccount(env, { email, name, role, companyName }) 
   } catch (e) { /* notification must never break signup */ }
 }
 
-/* ---------------- AI traffic engine (manual run, superuser only) ----------
-   Mirrors worker/src/index.js's analyzeScreenshot() — that Worker only
-   captures screenshots into pending_snapshots; this is the interactive
-   analysis half (Claude vision call + write to traffic_snapshots), now
-   triggerable from the admin console instead of a Claude Code session. */
-async function analyzeScreenshot(env, imageBase64) {
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 400,
-      output_config: {
-        format: {
-          type: 'json_schema',
-          schema: {
-            type: 'object',
-            properties: {
-              congestionScore: { type: 'integer' },
-              densityLabel: { type: 'string', enum: ['free', 'heavy', 'severe'] },
-              note: { type: 'string' }
-            },
-            required: ['congestionScore', 'densityLabel', 'note'],
-            additionalProperties: false
-          }
-        }
-      },
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } },
-          {
-            type: 'text',
-            text: 'This is a screenshot of Google Maps with the live traffic layer enabled, centered on a billboard location. ' +
-              "Read the colored road segments in roughly a 500m radius around the center of the image, using Google's own " +
-              'traffic-layer legend: green = free-flowing (roughly 50mph+, no delay), orange = medium traffic (roughly ' +
-              '25-50mph), red = heavy delays (under 25mph), dark red = extremely slow or stationary (often an incident). ' +
-              'Estimate an overall congestion score from 0 (completely free-flowing, all green) to 100 (gridlocked, dark red ' +
-              'throughout) — the more orange/red visible and the larger the affected area, the higher the score. Pick ' +
-              'densityLabel "free" if the score would be under 50, "heavy" if 50 or higher, or "severe" specifically for ' +
-              'extremely slow/stationary dark-red conditions (typically 85+). Write one short sentence describing what you ' +
-              'see (which roads are congested, and which color dominates). If no colored traffic data is visible at all, ' +
-              'use congestionScore 0, densityLabel "free", and say so in the note.'
-          }
-        ]
-      }]
-    })
-  });
-  if (!resp.ok) throw new Error('Claude vision call failed: ' + resp.status + ' ' + (await resp.text()));
-  const data = await resp.json();
-  const textBlock = (data.content || []).find(b => b.type === 'text');
-  if (!textBlock) throw new Error('No text block in Claude response');
-  return JSON.parse(textBlock.text);
+/* ---------------- simulated test data (superuser only) ----------------
+   Seeds a handful of clearly-marked demo companies/billboards/traffic
+   history so a superuser can exercise the console and dashboards without
+   waiting on real signups or the real traffic engine. Every row created
+   here belongs to a companies.is_test_data=1 company, which keeps it:
+     - out of the public marketplace (billboards/public) and the signup
+       company picker (auth/companies) — a real visitor must never see it
+     - out of worker/src/index.js's cron — never sampled against the real
+       Google Routes API, never billed
+   ...while still showing up in the admin console (Companies/Overview/
+   Users) and this billboard's own traffic chart, since that's the point:
+   see the real UI populated, without it ever reaching a real customer. */
+
+const TEST_DATA_COMPANIES = [
+  {
+    name: 'Demo Outdoor Media',
+    billboards: [
+      { title: 'Galle Road Hoarding — Bambalapitiya', area: 'Bambalapitiya, Colombo', lat: 6.8905, lng: 79.8565, facing: 'N', size: '40ft x 20ft', type: 'hoarding', category: 'arterial', price: 185000, traffic: 42000 },
+      { title: 'Marine Drive Digital Screen', area: 'Marine Drive, Colombo', lat: 6.9105, lng: 79.8478, facing: 'S', size: '20ft x 10ft', type: 'digital_display', category: 'highway', price: 260000, traffic: 58000 }
+    ]
+  },
+  {
+    name: 'Demo Skyline Ads',
+    billboards: [
+      { title: 'High Level Road Banner — Nugegoda', area: 'Nugegoda', lat: 6.8721, lng: 79.8988, facing: 'E', size: '30ft x 15ft', type: 'banner', category: 'arterial', price: 95000, traffic: 31000 },
+      { title: 'Kandy Road Hoarding — Kadawatha', area: 'Kadawatha', lat: 7.0089, lng: 79.9515, facing: 'W', size: '40ft x 20ft', type: 'hoarding', category: 'highway', price: 210000, traffic: 47000 }
+    ]
+  },
+  {
+    name: 'Demo Coastal Signage',
+    billboards: [
+      { title: 'Galle Road Hoarding — Moratuwa', area: 'Moratuwa', lat: 6.7736, lng: 79.8827, facing: 'S', size: '40ft x 20ft', type: 'hoarding', category: 'arterial', price: 140000, traffic: 35000 }
+    ]
+  }
+];
+
+async function testDataStatus(env) {
+  const co = await env.DB.prepare('SELECT COUNT(*) AS n FROM companies WHERE is_test_data=1').first();
+  const bb = await env.DB.prepare(
+    'SELECT COUNT(*) AS n FROM billboards WHERE company_id IN (SELECT id FROM companies WHERE is_test_data=1)'
+  ).first();
+  return { enabled: (co.n || 0) > 0, companies: co.n || 0, billboards: bb.n || 0 };
 }
 
-// Streams newline-delimited JSON progress events while it works through
-// pending_snapshots one row at a time — the response body IS the job, so
-// there's no separate polling endpoint to keep in sync.
-function runAiEngine(env, me) {
-  const encoder = new TextEncoder();
-  let ctrl;
-  const stream = new ReadableStream({ start(c) { ctrl = c; } });
-  const send = obj => ctrl.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
+async function seedTestData(env, me) {
+  const existing = await testDataStatus(env);
+  if (existing.enabled) return { alreadyEnabled: true, ...existing };
 
-  (async () => {
-    let processed = 0, failed = 0;
-    try {
-      const rows = await env.DB.prepare(
-        'SELECT id, billboard_id, captured_at, image_data FROM pending_snapshots ORDER BY captured_at ASC'
-      ).all();
-      const pending = rows.results || [];
-      send({ type: 'start', total: pending.length });
+  const now = Date.now();
+  let companyCount = 0, billboardCount = 0, snapshotCount = 0;
 
-      if (!pending.length) {
-        send({ type: 'log', message: 'No pending snapshots — nothing to analyze.' });
-      }
+  for (const companyDef of TEST_DATA_COMPANIES) {
+    const companyId = 'CO-' + shortId();
+    await env.DB.prepare('INSERT INTO companies (id, name, type, created_at, is_test_data) VALUES (?,?,?,?,1)')
+      .bind(companyId, '[TEST] ' + companyDef.name, 'provider', now).run();
+    companyCount++;
 
-      for (let i = 0; i < pending.length; i++) {
-        const row = pending[i];
-        send({ type: 'log', message: `Analyzing ${row.billboard_id} (${i + 1}/${pending.length})…`, done: i, total: pending.length });
-        try {
-          const base64 = row.image_data.replace(/^data:image\/\w+;base64,/, '');
-          const result = await analyzeScreenshot(env, base64);
+    const { hash, salt } = await hashPassword(randHex(24));
+    const userId = crypto.randomUUID();
+    const userEmail = 'test-data+' + companyId.toLowerCase() + '@billboardiq.invalid';
+    await env.DB.prepare(
+      `INSERT INTO users (id, email, name, role, company_name, company_id, password_hash, password_salt, created_at, verified)
+       VALUES (?,?,?,?,?,?,?,?,?,1)`
+    ).bind(userId, userEmail, '[TEST] ' + companyDef.name + ' Owner', 'provider', '[TEST] ' + companyDef.name, companyId, hash, salt, now).run();
+
+    for (const bbDef of companyDef.billboards) {
+      const billboardId = 'BB-' + shortId();
+      await env.DB.prepare(
+        `INSERT INTO billboards
+         (id, owner_id, company_id, title, area, description, lat, lng, size, type, category, illuminated,
+          price, traffic, peak_hours, availability, approval_state, facing, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,'approved',?,?,?)`
+      ).bind(
+        billboardId, userId, companyId, bbDef.title, bbDef.area, 'Simulated demo listing for testing the admin console — not a real booking.',
+        bbDef.lat, bbDef.lng, bbDef.size, bbDef.type, bbDef.category,
+        bbDef.price, bbDef.traffic, JSON.stringify([8, 9, 17, 18]), 'available', bbDef.facing, now, now
+      ).run();
+      billboardCount++;
+
+      // A week of synthetic history (4 samples/day) with a plausible
+      // morning/evening peak-hour bump, so this billboard's trend chart
+      // reads as populated immediately instead of waiting on real cron ticks.
+      for (let day = 6; day >= 0; day--) {
+        for (const hour of [7, 12, 17, 21]) {
+          const capturedAt = now - day * 86400000 - (23 - hour) * 3600000;
+          const isPeak = hour === 7 || hour === 17;
+          const score = Math.round((isPeak ? 55 : 20) + (Math.random() * 20 - 10));
+          const clamped = Math.max(0, Math.min(100, score));
+          const label = clamped >= 85 ? 'severe' : clamped >= 50 ? 'heavy' : 'free';
           await env.DB.prepare(
-            `INSERT INTO traffic_snapshots (id, billboard_id, captured_at, congestion_score, density_label, note, created_at)
-             VALUES (?,?,?,?,?,?,?)`
-          ).bind('TS-' + shortId(), row.billboard_id, row.captured_at, result.congestionScore, result.densityLabel, result.note, Date.now()).run();
-          await env.DB.prepare('DELETE FROM pending_snapshots WHERE id=?').bind(row.id).run();
-          processed++;
-          send({
-            type: 'log',
-            message: `→ ${row.billboard_id}: congestion ${result.congestionScore} (${result.densityLabel}) — ${result.note}`,
-            done: i + 1, total: pending.length
-          });
-        } catch (e) {
-          failed++;
-          send({ type: 'log', message: `✗ ${row.billboard_id} failed: ${e.message}`, done: i + 1, total: pending.length, error: true });
+            `INSERT INTO traffic_snapshots (id, billboard_id, captured_at, congestion_score, density_label, note, created_at, source)
+             VALUES (?,?,?,?,?,?,?,'simulated')`
+          ).bind('TS-' + shortId(), billboardId, capturedAt, clamped, label, 'Simulated sample for admin console testing.', capturedAt).run();
+          snapshotCount++;
         }
       }
-
-      await audit(env, me.id, 'ai_engine_run', `${processed} processed, ${failed} failed`);
-      send({ type: 'complete', processed, failed });
-    } catch (e) {
-      send({ type: 'error', message: e.message });
-    } finally {
-      ctrl.close();
     }
-  })();
+  }
 
-  return new Response(stream, {
-    headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }
-  });
+  await audit(env, me.id, 'test_data_enable', `${companyCount} companies, ${billboardCount} billboards`);
+  return { alreadyEnabled: false, companies: companyCount, billboards: billboardCount, snapshots: snapshotCount };
+}
+
+async function purgeTestData(env, me) {
+  const before = await testDataStatus(env);
+  if (!before.enabled) return { alreadyDisabled: true, ...before };
+
+  await env.DB.prepare(
+    `DELETE FROM traffic_snapshots WHERE billboard_id IN
+     (SELECT id FROM billboards WHERE company_id IN (SELECT id FROM companies WHERE is_test_data=1))`
+  ).run();
+  await env.DB.prepare(
+    `DELETE FROM favorites WHERE billboard_id IN
+     (SELECT id FROM billboards WHERE company_id IN (SELECT id FROM companies WHERE is_test_data=1))`
+  ).run();
+  await env.DB.prepare('DELETE FROM billboards WHERE company_id IN (SELECT id FROM companies WHERE is_test_data=1)').run();
+  await env.DB.prepare('DELETE FROM customers WHERE company_id IN (SELECT id FROM companies WHERE is_test_data=1)').run();
+  await env.DB.prepare('DELETE FROM users WHERE company_id IN (SELECT id FROM companies WHERE is_test_data=1)').run();
+  await env.DB.prepare('DELETE FROM companies WHERE is_test_data=1').run();
+
+  await audit(env, me.id, 'test_data_disable', `${before.companies} companies, ${before.billboards} billboards removed`);
+  return { alreadyDisabled: false, ...before };
 }
 
 function validEmail(e) { return typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e.length <= 200; }
@@ -582,7 +587,7 @@ export async function onRequest(context) {
     }
 
     if (path === 'auth/companies' && method === 'GET') {
-      const rows = await env.DB.prepare('SELECT id, name, type FROM companies ORDER BY name ASC').all();
+      const rows = await env.DB.prepare('SELECT id, name, type FROM companies WHERE is_test_data=0 ORDER BY name ASC').all();
       return json({ companies: rows.results || [] });
     }
 
@@ -623,12 +628,17 @@ export async function onRequest(context) {
 
     if (!me) return bad('Not signed in', 401);
 
-    // Approved billboards for the map — signed-in users only (any role)
+    // Approved billboards for the map — signed-in users only (any role).
+    // Excludes simulated test-data companies (admin/test-data/enable) —
+    // those are for exercising the admin console only and must never appear
+    // to a real user browsing the live marketplace.
     if (path === 'billboards/public' && method === 'GET') {
       const rows = await env.DB.prepare(
         `SELECT ${BB_LIST_COLS}, u.name AS owner_name, u.company_name AS owner_company, u.verified AS owner_verified_flag
          FROM billboards b JOIN users u ON u.id=b.owner_id
-         WHERE b.approval_state='approved' ORDER BY b.updated_at DESC LIMIT 1000`
+         LEFT JOIN companies c ON c.id=b.company_id
+         WHERE b.approval_state='approved' AND COALESCE(c.is_test_data,0)=0
+         ORDER BY b.updated_at DESC LIMIT 1000`
       ).all();
       return json({ billboards: (rows.results || []).map(bbRow) });
     }
@@ -727,16 +737,19 @@ export async function onRequest(context) {
       return json({ events: rows.results });
     }
 
-    if (path === 'admin/ai-engine/status' && method === 'GET') {
+    if (path === 'admin/test-data/status' && method === 'GET') {
       if (me.role !== 'superuser') return bad('Superuser access required', 403);
-      const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM pending_snapshots').first();
-      return json({ pending: row.n });
+      return json(await testDataStatus(env));
     }
 
-    if (path === 'admin/ai-engine/run' && method === 'POST') {
+    if (path === 'admin/test-data/enable' && method === 'POST') {
       if (me.role !== 'superuser') return bad('Superuser access required', 403);
-      if (!env.ANTHROPIC_API_KEY) return bad('ANTHROPIC_API_KEY is not configured for this environment.', 500);
-      return runAiEngine(env, me);
+      return json(await seedTestData(env, me));
+    }
+
+    if (path === 'admin/test-data/disable' && method === 'POST') {
+      if (me.role !== 'superuser') return bad('Superuser access required', 403);
+      return json(await purgeTestData(env, me));
     }
 
     /* ---------- superuser: companies ---------- */
