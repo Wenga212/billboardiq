@@ -725,47 +725,76 @@
   .adm-card p.sub { color:var(--adm-muted); font-size:13px; }
 
   /* Scoped overrides of the shared dashboard widgets — a colorful, elevated
-     treatment inside the console without touching their global definitions
-     (still used by the regular Overview tab outside the console). KPI tiles
-     cycle through 5 solid brand tones (--adm-tile-1..5) — a deliberate
-     rotation for visual variety across a KPI row, same idea as the rest of
-     the app's own KPI tiles, not tied to any specific metric's meaning. */
-  .adm-shell .kpi-grid, .adm-shell .donut-grid { gap:12px; }
-  .adm-shell .kpi-tile {
+     treatment applied everywhere `.adm-theme` wraps content (the console's
+     `.adm-shell`, and the main Overview tab's `#overviewPane`) without
+     touching their global definitions (still used by other tabs — My
+     Billboards, Customers, etc. — which keep the site's own brand look).
+     KPI tiles cycle through 5 solid brand tones (--adm-tile-1..5) — a
+     deliberate rotation for visual variety across a KPI row, not tied to
+     any specific metric's meaning. */
+  .adm-theme .kpi-grid, .adm-theme .donut-grid { gap:12px; }
+  .adm-theme .kpi-tile {
     background:var(--adm-tile-1); border:none; box-shadow:var(--adm-shadow-md); border-radius:14px;
     padding:18px 20px;
   }
-  .adm-shell .kpi-tile::before { display:none; }
-  .adm-shell .kpi-tile:hover { transform:translateY(-2px); box-shadow:var(--adm-shadow-md); }
-  .adm-shell .kpi-tile:nth-child(5n+2) { background:var(--adm-tile-2); }
-  .adm-shell .kpi-tile:nth-child(5n+3) { background:var(--adm-tile-3); }
-  .adm-shell .kpi-tile:nth-child(5n+4) { background:var(--adm-tile-4); }
-  .adm-shell .kpi-tile:nth-child(5n+5) { background:var(--adm-tile-5); }
-  .adm-shell .kpi-label { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; letter-spacing:0; text-transform:none; color:rgba(255,255,255,.82); }
-  .adm-shell .kpi-value { font-family:'DM Sans',sans-serif; font-size:27px; font-weight:800; color:#fff; font-variant-numeric:tabular-nums; letter-spacing:-.3px; }
-  .adm-shell .kpi-tile.warn .kpi-value { color:#fff; }
-  [data-theme="dark"] .adm-shell .kpi-value { text-shadow:none; }
+  .adm-theme .kpi-tile::before { display:none; }
+  .adm-theme .kpi-tile:hover { transform:translateY(-2px); box-shadow:var(--adm-shadow-md); }
+  .adm-theme .kpi-tile:nth-child(5n+2) { background:var(--adm-tile-2); }
+  .adm-theme .kpi-tile:nth-child(5n+3) { background:var(--adm-tile-3); }
+  .adm-theme .kpi-tile:nth-child(5n+4) { background:var(--adm-tile-4); }
+  .adm-theme .kpi-tile:nth-child(5n+5) { background:var(--adm-tile-5); }
+  .adm-theme .kpi-label { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; letter-spacing:0; text-transform:none; color:rgba(255,255,255,.82); }
+  .adm-theme .kpi-value { font-family:'DM Sans',sans-serif; font-size:27px; font-weight:800; color:#fff; font-variant-numeric:tabular-nums; letter-spacing:-.3px; }
+  .adm-theme .kpi-tile.warn .kpi-value { color:#fff; }
+  [data-theme="dark"] .adm-theme .kpi-value { text-shadow:none; }
 
-  .adm-shell .donut-card {
+  .adm-theme .donut-card {
     background:var(--adm-surface); border:1px solid var(--adm-border); box-shadow:var(--adm-shadow-md);
   }
-  .adm-shell .donut-card:hover { transform:translateY(-2px); box-shadow:var(--adm-shadow-md); }
-  .adm-shell .donut-card h3 { font-family:'DM Sans',sans-serif; font-size:14.5px; font-weight:700; letter-spacing:0; color:var(--adm-text); }
-  .adm-shell .donut-center-value { font-family:'DM Sans',sans-serif; font-size:24px; font-weight:800; letter-spacing:-.2px; font-variant-numeric:tabular-nums; }
-  .adm-shell .donut-center-label { font-family:'DM Sans',sans-serif; font-size:10px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--adm-muted); }
-  .adm-shell .donut-legend-value { font-family:'DM Sans',sans-serif; font-weight:700; font-variant-numeric:tabular-nums; }
-  .adm-shell .donut-legend-label { color:var(--adm-muted); }
-  .adm-shell .donut-legend-item:hover { background:var(--adm-surface-2); }
+  .adm-theme .donut-card:hover { transform:translateY(-2px); box-shadow:var(--adm-shadow-md); }
+  .adm-theme .donut-card h3 { font-family:'DM Sans',sans-serif; font-size:14.5px; font-weight:700; letter-spacing:0; color:var(--adm-text); }
+  .adm-theme .donut-center-value { font-family:'DM Sans',sans-serif; font-size:24px; font-weight:800; letter-spacing:-.2px; font-variant-numeric:tabular-nums; }
+  .adm-theme .donut-center-label { font-family:'DM Sans',sans-serif; font-size:10px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--adm-muted); }
+  .adm-theme .donut-legend-value { font-family:'DM Sans',sans-serif; font-weight:700; font-variant-numeric:tabular-nums; }
+  .adm-theme .donut-legend-label { color:var(--adm-muted); }
+  .adm-theme .donut-legend-item:hover { background:var(--adm-surface-2); }
 
-  .adm-shell .bar-row:hover { background:var(--adm-surface-2); }
-  .adm-shell .bar-label { color:var(--adm-text); font-weight:500; }
-  .adm-shell .bar-track { background:var(--adm-surface-2); height:18px; }
-  .adm-shell .bar-value { font-family:'DM Sans',sans-serif; font-weight:700; color:var(--adm-text); font-variant-numeric:tabular-nums; }
-  .adm-shell .bar-fill.accent { background:linear-gradient(90deg, var(--adm-accent), color-mix(in srgb, var(--adm-accent) 70%, var(--adm-tile-2))); }
+  .adm-theme .bar-row:hover { background:var(--adm-surface-2); }
+  .adm-theme .bar-label { color:var(--adm-text); font-weight:500; }
+  .adm-theme .bar-track { background:var(--adm-surface-2); height:18px; }
+  .adm-theme .bar-value { font-family:'DM Sans',sans-serif; font-weight:700; color:var(--adm-text); font-variant-numeric:tabular-nums; }
+  .adm-theme .bar-fill.accent { background:linear-gradient(90deg, var(--adm-accent), color-mix(in srgb, var(--adm-accent) 70%, var(--adm-tile-2))); }
+  .adm-theme .bar-fill.blue { background:linear-gradient(90deg, var(--adm-tile-1), color-mix(in srgb, var(--adm-tile-1) 70%, var(--adm-tile-3))); }
 
-  .adm-shell .btn { background:var(--adm-accent); color:var(--adm-accent-ink); font-weight:700; letter-spacing:0; text-transform:none; border-radius:9px; box-shadow:var(--adm-shadow-sm); }
-  .adm-shell .btn:hover { transform:translateY(-1px); filter:brightness(1.08); box-shadow:var(--adm-shadow-md); }
-  .adm-shell .btn.danger { background:var(--red); color:#fff; }
+  .adm-theme .btn { background:var(--adm-accent); color:var(--adm-accent-ink); font-weight:700; letter-spacing:0; text-transform:none; border-radius:9px; box-shadow:var(--adm-shadow-sm); }
+  .adm-theme .btn:hover { transform:translateY(-1px); filter:brightness(1.08); box-shadow:var(--adm-shadow-md); }
+  .adm-theme .btn.danger { background:var(--red); color:#fff; }
+
+  /* .ov-section is the main Overview tab's own card container (My Billboards/
+     Customers keep it in the brand style — this only fires under .adm-theme,
+     i.e. inside #overviewPane or the console). Matches .adm-card exactly. */
+  .adm-theme .ov-section {
+    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:14px;
+    padding:20px 22px; box-shadow:var(--adm-shadow-md);
+  }
+  .adm-theme .ov-section h3 {
+    font-family:'DM Sans',sans-serif; font-size:17px; font-weight:800; letter-spacing:-.2px; color:var(--adm-text);
+  }
+  .adm-theme .ov-section h3 small { font-family:'DM Sans',sans-serif; font-weight:500; letter-spacing:0; opacity:1; color:var(--adm-muted); }
+  .adm-theme .ov-subtabs { background:transparent; }
+  .adm-theme .ov-subtab { font-family:'DM Sans',sans-serif; font-size:12.5px; font-weight:600; letter-spacing:0; text-transform:none; background:var(--adm-surface); border-color:var(--adm-border); color:var(--adm-muted); }
+  .adm-theme .ov-subtab:hover { color:var(--adm-text); border-color:var(--adm-muted); }
+  .adm-theme .ov-subtab.active { color:var(--adm-accent-ink); background:var(--adm-accent); border-color:var(--adm-accent); }
+
+  /* Provider-directory-style list rows and inline stat strips — same
+     normal-case DM Sans + tabular-nums treatment as the rest of .adm-theme,
+     dropping the uppercase monospace labels used in the brand styling. */
+  .adm-theme .list-row:not(.static):hover .list-title { color:var(--adm-accent); }
+  .adm-theme .list-sub { color:var(--adm-muted); }
+  .adm-theme .list-badge { font-family:'DM Sans',sans-serif; font-size:11px; font-weight:600; letter-spacing:0; text-transform:none; border-radius:999px; }
+  .adm-theme .list-badge.neutral { background:var(--adm-surface-2); color:var(--adm-muted); border-color:var(--adm-border); }
+  .adm-theme .stat-label { font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--adm-muted); }
+  .adm-theme .stat-value { font-weight:800; font-variant-numeric:tabular-nums; color:var(--adm-text); }
 
   table.con-table { width:100%; border-collapse:collapse; min-width:640px; }
   table.con-table thead { background:var(--adm-surface-2); }
@@ -879,7 +908,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.35</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.36</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -918,7 +947,7 @@
     <button class="tab hidden" data-view="console" id="tab-console">⚙ Console</button>
   </div>
 
-  <div id="overviewPane"></div>
+  <div id="overviewPane" class="adm-theme"></div>
   <div id="customersPane" class="hidden"></div>
   <div id="consolePane" class="hidden"></div>
   <div id="grid" class="grid hidden"></div>
@@ -2605,7 +2634,7 @@ function renderConsolePane() {
   const pane = $('consolePane');
   const tabs = consoleTabs();
   pane.innerHTML = `
-    <div class="adm-shell">
+    <div class="adm-shell adm-theme">
       ${tabs.length > 1 ? `<nav class="adm-nav">
         ${tabs.map(t => `<button class="adm-nav-item${consoleSubTab === t.id ? ' active' : ''}" data-constab="${t.id}">${esc(t.label)}</button>`).join('')}
       </nav>` : ''}
