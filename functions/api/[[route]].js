@@ -825,10 +825,14 @@ export async function onRequest(context) {
       // Only the most recent snapshot per billboard counts toward "current"
       // congestion — a correlated MAX() subquery instead of a window
       // function keeps this portable across whatever SQLite build D1 runs.
+      // Scoped to source='google_routes' so a billboard that hasn't been
+      // resampled by the real engine yet doesn't surface a leftover
+      // screenshot+vision-guessed reading as its "current" state.
       const densityRows = await env.DB.prepare(
         `SELECT density_label AS s, COUNT(*) AS n
          FROM traffic_snapshots ts
-         WHERE ts.captured_at = (SELECT MAX(captured_at) FROM traffic_snapshots WHERE billboard_id = ts.billboard_id)
+         WHERE ts.source = 'google_routes'
+           AND ts.captured_at = (SELECT MAX(captured_at) FROM traffic_snapshots WHERE billboard_id = ts.billboard_id AND source = 'google_routes')
            AND density_label IS NOT NULL
          GROUP BY density_label`
       ).all();
@@ -957,6 +961,10 @@ export async function onRequest(context) {
 
     // Collected traffic-analytics history for one billboard (owner or admin+ only) —
     // populated by the standalone traffic-engine Worker (worker/), never written here.
+    // Scoped to source='google_routes' only — excludes the old screenshot+vision
+    // pipeline's readings (source='vision_legacy', kept in the table for the
+    // record but never surfaced) so every chart/tile only ever reflects real
+    // Google-routing data, not the guessed scores that predate it.
     if (method === 'GET' && /^billboards\/[^/]+\/traffic$/.test(path)) {
       const id = path.split('/')[1];
       const bb = await env.DB.prepare('SELECT owner_id, company_id, approval_state, ai_insights, ai_insights_updated_at FROM billboards WHERE id=?').bind(id).first();
@@ -965,7 +973,7 @@ export async function onRequest(context) {
         return bad('Not your billboard', 403);
       }
       const rows = await env.DB.prepare(
-        'SELECT captured_at, congestion_score, density_label, note FROM traffic_snapshots WHERE billboard_id=? ORDER BY captured_at DESC LIMIT 500'
+        "SELECT captured_at, congestion_score, density_label, note FROM traffic_snapshots WHERE billboard_id=? AND source='google_routes' ORDER BY captured_at DESC LIMIT 500"
       ).bind(id).all();
       const snapshots = (rows.results || []).map(r => ({
         capturedAt: r.captured_at,
@@ -982,7 +990,7 @@ export async function onRequest(context) {
       const range = await env.DB.prepare(
         `SELECT MIN(ts.congestion_score) AS lo, MAX(ts.congestion_score) AS hi
          FROM traffic_snapshots ts JOIN billboards b ON b.id = ts.billboard_id
-         WHERE b.approval_state = 'approved' OR b.id = ?`
+         WHERE ts.source = 'google_routes' AND (b.approval_state = 'approved' OR b.id = ?)`
       ).bind(id).first();
       return json({
         snapshots, aiInsights: bb.ai_insights || null, aiInsightsUpdatedAt: bb.ai_insights_updated_at || null,

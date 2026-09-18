@@ -16,12 +16,15 @@ narratives. Working directory is the billboardiq project root.
 
 2. For each billboard from step 1, a refresh is due if ai_insights_updated_at
    is null, OR is more than 7 days (604800000 ms) before now, OR running
-   wrangler d1 execute billboardiq-db --remote --command "SELECT COUNT(*) AS n FROM traffic_snapshots WHERE billboard_id='"'"'<id>'"'"' AND captured_at > <ai_insights_updated_at or 0>" --json
+   wrangler d1 execute billboardiq-db --remote --command "SELECT COUNT(*) AS n FROM traffic_snapshots WHERE billboard_id='"'"'<id>'"'"' AND source='"'"'google_routes'"'"' AND captured_at > <ai_insights_updated_at or 0>" --json
    returns n >= 20. Skip billboards that are not due — do nothing for them.
 
-3. For each due billboard, run: wrangler d1 execute billboardiq-db --remote --command "SELECT captured_at, congestion_score, density_label FROM traffic_snapshots WHERE billboard_id='"'"'<id>'"'"' ORDER BY captured_at DESC LIMIT 200" --json
+3. For each due billboard, run: wrangler d1 execute billboardiq-db --remote --command "SELECT captured_at, congestion_score, density_label FROM traffic_snapshots WHERE billboard_id='"'"'<id>'"'"' AND source='"'"'google_routes'"'"' ORDER BY captured_at DESC LIMIT 200" --json
    If fewer than 5 rows come back, skip it — not enough real history yet to
-   say anything useful. Do not invent data to fill the gap.
+   say anything useful. Do not invent data to fill the gap. Only ever use
+   source='"'"'google_routes'"'"' rows (real Google Routes API data) — never the
+   older source='"'"'vision_legacy'"'"' rows kept in the table from the
+   screenshot+AI-guess pipeline this replaced.
 
 4. From that real history (0-100 congestion scores, sampled a few times a
    day, straight from Google'"'"'s live-traffic routing data), write 2-3 short

@@ -1128,7 +1128,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.32</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.33</span></a>
   <div class="top-actions">
     <button class="icon-btn" id="trafficPill" title="Live traffic layer" aria-label="Toggle live traffic layer" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2204,7 +2204,18 @@ function trendChartSvg(entries, minScore, maxScore) {
   const times = entries.map(e => e[2]);
   const tMin = times[0], tMax = times[times.length - 1];
   const x = t => padL + (tMax === tMin ? 0 : ((t - tMin) / (tMax - tMin)) * innerW);
-  const y = v => padT + innerH - (v / 100) * innerH;
+  // Normalized to THIS chart's own plotted values, not the fixed 0-100 scale
+  // (that's still used for color/severity via minScore/maxScore, which are
+  // shared across every listing on purpose). Real congestion scores cluster
+  // in a narrow band — a quiet location might only ever swing 0-10 — so a
+  // 0-100 floor flattened every trend into a near-invisible line hugging the
+  // bottom. The chart's own lowest plotted value now sits on the x-axis and
+  // its highest at the top, so whatever variation actually exists fills the
+  // available height, however small that variation is in absolute terms.
+  const plotted = entries.map(e => e[1]);
+  const vFloor = Math.min(...plotted), vCeil = Math.max(...plotted);
+  const vRange = Math.max(1, vCeil - vFloor);
+  const y = v => padT + innerH - (v - vFloor) / vRange * innerH;
 
   // entries include both real readings and gap-filled estimates (see
   // buildSmoothSeries) — both feed the visual curve, but only real ones are
