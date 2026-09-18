@@ -26,6 +26,14 @@
     --shadow-sm:0 2px 10px rgba(23,26,23,.07), 0 1px 2px rgba(23,26,23,.06);
     --shadow-md:0 10px 28px rgba(23,26,23,.11), 0 2px 8px rgba(23,26,23,.06);
     --shadow-lg:0 24px 60px rgba(23,26,23,.18), 0 8px 20px rgba(23,26,23,.09);
+    /* Admin console skin — deliberately neutral/cool, distinct from the
+       brand's warm olive/lime, so the internal tool reads as its own
+       calmer "place" rather than more marketing chrome. Semantic colors
+       (role/status meaning) still come from --green/--amber/--red/--blue
+       above; these are only the neutral surface + one accent. */
+    --adm-bg:#F6F7F9; --adm-surface:#FFFFFF; --adm-surface-2:#EEF0F4; --adm-border:#E2E4EA;
+    --adm-text:#14161B; --adm-muted:#6B7280;
+    --adm-accent:#4C4FE0; --adm-accent-ink:#FFFFFF; --adm-accent-soft:rgba(76,79,224,.10);
   }
   [data-theme="dark"] {
     --bg:#0b0d0c; --panel:#121514; --panel-2:#181b1a; --line:#242827;
@@ -39,6 +47,9 @@
     --shadow-sm:0 2px 12px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.35);
     --shadow-md:0 12px 30px rgba(0,0,0,.48), 0 3px 10px rgba(0,0,0,.36);
     --shadow-lg:0 28px 64px rgba(0,0,0,.6), 0 10px 24px rgba(0,0,0,.4);
+    --adm-bg:#101114; --adm-surface:#17181C; --adm-surface-2:#1E2024; --adm-border:#2A2C31;
+    --adm-text:#EDEEF2; --adm-muted:#9297A3;
+    --adm-accent:#7B7EF0; --adm-accent-ink:#12131A; --adm-accent-soft:rgba(123,126,240,.16);
   }
   [data-theme="light"] {
     --bg:#e9eae4;
@@ -664,74 +675,146 @@
   .toast.show { transform:translateX(-50%) translateY(0); }
   .hidden { display:none !important; }
 
-  /* ================= ADMIN CONSOLE (superuser Console tab) ================= */
+  /* ================= ADMIN CONSOLE (superuser Console tab) =================
+     A deliberately separate, quieter visual system from the rest of this
+     file — flat neutral surfaces, one restrained accent, plain-case DM Sans
+     throughout (see --adm-* tokens above). `.adm-shell .kpi-tile` /
+     `.donut-card` / `.bar-row` / `.btn` below are scoped overrides of the
+     shared dashboard widgets — they only apply inside the console, so the
+     regular Overview tab and rest of the app are untouched. */
+
+  .adm-shell { display:flex; align-items:flex-start; gap:24px; }
+  .adm-nav {
+    flex:0 0 206px; position:sticky; top:76px;
+    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:12px;
+    padding:6px; display:flex; flex-direction:column; gap:2px;
+  }
+  .adm-nav-item {
+    display:flex; align-items:center; gap:9px; padding:9px 12px 9px 10px;
+    border-radius:8px; border-left:3px solid transparent;
+    font-size:13.5px; font-weight:500; color:var(--adm-muted); text-align:left;
+    transition:background-color .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .adm-nav-item:hover { color:var(--adm-text); background:var(--adm-surface-2); }
+  .adm-nav-item.active { color:var(--adm-accent); background:var(--adm-accent-soft); border-left-color:var(--adm-accent); font-weight:600; }
+  .adm-content { flex:1; min-width:0; display:flex; flex-direction:column; gap:16px; }
+  .adm-note { font-size:12.5px; color:var(--adm-muted); }
+
+  .adm-card {
+    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:12px;
+    padding:20px 22px;
+  }
+  .adm-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .adm-card h3 {
+    font-family:'DM Sans',sans-serif; font-size:15px; font-weight:700; letter-spacing:0;
+    color:var(--adm-text); margin:0 0 16px;
+  }
+  .adm-card-head h3 { margin:0; }
+  .adm-card h3 small { font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:400; color:var(--adm-muted); margin-left:8px; }
+  .adm-card p.sub { color:var(--adm-muted); font-size:13px; }
+
+  /* Scoped overrides of the shared dashboard widgets — flatten and quiet
+     them down without touching their global definitions (still used by the
+     regular Overview tab outside the console). */
+  .adm-shell .kpi-tile {
+    background:var(--adm-surface); border:1px solid var(--adm-border); box-shadow:none; border-radius:10px;
+  }
+  .adm-shell .kpi-tile::before { display:none; }
+  .adm-shell .kpi-tile:hover { transform:none; box-shadow:none; border-color:var(--adm-border); }
+  .adm-shell .kpi-label { font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--adm-muted); }
+  .adm-shell .kpi-value { font-family:'DM Sans',sans-serif; font-size:24px; font-weight:700; color:var(--adm-text); font-variant-numeric:tabular-nums; }
+  .adm-shell .kpi-tile.warn .kpi-value { color:var(--amber); }
+  [data-theme="dark"] .adm-shell .kpi-value { text-shadow:none; }
+
+  .adm-shell .donut-card {
+    background:var(--adm-surface); border:1px solid var(--adm-border); box-shadow:none;
+  }
+  .adm-shell .donut-card:hover { transform:none; box-shadow:none; }
+  .adm-shell .donut-card h3 { font-family:'DM Sans',sans-serif; font-size:13.5px; font-weight:600; letter-spacing:0; color:var(--adm-text); }
+  .adm-shell .donut-center-value { font-family:'DM Sans',sans-serif; font-weight:700; letter-spacing:0; font-variant-numeric:tabular-nums; }
+  .adm-shell .donut-center-label { font-family:'DM Sans',sans-serif; font-size:10px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--adm-muted); }
+  .adm-shell .donut-legend-value { font-family:'DM Sans',sans-serif; font-weight:600; font-variant-numeric:tabular-nums; }
+  .adm-shell .donut-legend-label { color:var(--adm-muted); }
+  .adm-shell .donut-legend-item:hover { background:var(--adm-surface-2); }
+
+  .adm-shell .bar-row:hover { background:var(--adm-surface-2); }
+  .adm-shell .bar-label { color:var(--adm-text); }
+  .adm-shell .bar-track { background:var(--adm-surface-2); }
+  .adm-shell .bar-value { font-family:'DM Sans',sans-serif; font-weight:500; color:var(--adm-muted); font-variant-numeric:tabular-nums; }
+  .adm-shell .bar-fill.accent { background:var(--adm-accent); }
+
+  .adm-shell .btn { background:var(--adm-accent); color:var(--adm-accent-ink); font-weight:600; letter-spacing:0; text-transform:none; border-radius:8px; box-shadow:none; }
+  .adm-shell .btn:hover { transform:none; filter:brightness(1.08); box-shadow:none; }
+  .adm-shell .btn.danger { background:var(--red); color:#fff; }
+
   table.con-table { width:100%; border-collapse:collapse; min-width:640px; }
   table.con-table th {
-    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.5px;
-    text-transform:uppercase; color:var(--muted); text-align:left;
-    padding:12px 14px; border-bottom:1px solid var(--line);
+    font-family:'DM Sans',sans-serif; font-size:11px; font-weight:600;
+    color:var(--adm-muted); text-align:left;
+    padding:10px 14px; border-bottom:1px solid var(--adm-border);
   }
-  table.con-table td { padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:middle; transition:background-color .15s ease; }
+  table.con-table td { padding:12px 14px; border-bottom:1px solid var(--adm-border); vertical-align:middle; font-size:13px; transition:background-color .15s ease; }
   table.con-table tr:last-child td { border-bottom:none; }
-  table.con-table tr:hover td { background:var(--panel-2); }
+  table.con-table tr:hover td { background:var(--adm-surface-2); }
   .con-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -16px; padding:0 16px; }
-  .con-u-name { font-weight:600; }
-  .con-u-email { color:var(--muted); font-size:12px; }
+  .con-u-name { font-weight:600; color:var(--adm-text); }
+  .con-u-email { color:var(--adm-muted); font-size:12px; }
   .role {
-    font-family:'JetBrains Mono',monospace; font-size:9px; padding:4px 8px;
-    letter-spacing:1.5px; text-transform:uppercase; border-radius:6px; display:inline-block;
+    font-family:'DM Sans',sans-serif; font-size:11px; font-weight:600; padding:3px 9px;
+    letter-spacing:0; text-transform:none; border-radius:999px; display:inline-block;
   }
   .role.user { background:var(--green-bg); color:var(--green); }
-  .role.provider { background:rgba(95,122,0,.14); color:var(--accent-text); }
+  .role.provider { background:var(--adm-accent-soft); color:var(--adm-accent); }
   .role.agent { background:var(--blue-bg); color:var(--blue); }
   .role.admin { background:var(--amber-bg); color:var(--amber); }
   .role.superuser { background:var(--red-bg); color:var(--red); }
-  .con-mfa { font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1px; }
+  .con-mfa { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500; letter-spacing:0; }
   .con-mfa.on { color:var(--green); }
-  .con-mfa.off { color:var(--muted); }
-  .con-dt { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); white-space:nowrap; }
+  .con-mfa.off { color:var(--adm-muted); }
+  .con-dt { font-family:'DM Sans',sans-serif; font-size:12px; color:var(--adm-muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
   select.role-set {
-    background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text);
-    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.5px;
-    text-transform:uppercase; padding:6px; cursor:pointer; transition:border-color .18s ease, box-shadow .18s ease;
+    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:7px; color:var(--adm-text);
+    font-family:'DM Sans',sans-serif; font-size:12.5px; font-weight:500; letter-spacing:0;
+    text-transform:none; padding:6px 8px; cursor:pointer; transition:border-color .18s ease, box-shadow .18s ease;
   }
-  select.role-set:focus { border-color:var(--accent-text); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  select.role-set:focus { border-color:var(--adm-accent); box-shadow:0 0 0 3px var(--adm-accent-soft); }
   .del {
-    color:var(--red); font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1px;
-    text-transform:uppercase; padding:5px 8px; border:1px solid transparent; border-radius:6px;
+    color:var(--red); font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; letter-spacing:0;
+    text-transform:none; padding:6px 10px; border:1px solid transparent; border-radius:7px;
     transition:border-color .15s ease, background-color .15s ease;
   }
   .del:hover { border-color:var(--red); background:var(--red-bg); }
 
-  .co-type { font-family:'JetBrains Mono',monospace; font-size:9px; padding:4px 8px; letter-spacing:1.5px; text-transform:uppercase; border-radius:6px; background:var(--panel-2); color:var(--muted); }
-  .co-name { font-weight:600; cursor:pointer; transition:color .15s ease; }
-  .co-name:hover { color:var(--accent-text); }
+  .co-type { font-family:'DM Sans',sans-serif; font-size:11px; font-weight:600; padding:3px 9px; letter-spacing:0; text-transform:none; border-radius:999px; background:var(--adm-surface-2); color:var(--adm-muted); }
+  .co-name { font-weight:600; color:var(--adm-text); cursor:pointer; transition:color .15s ease; }
+  .co-name:hover { color:var(--adm-accent); }
   .co-new-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
   .co-new-row input, .co-new-row select {
-    background:var(--panel-2); border:1px solid var(--line); border-radius:8px; color:var(--text);
+    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:8px; color:var(--adm-text);
     padding:9px 10px; font-family:'DM Sans',sans-serif; font-size:13px; width:auto;
     transition:border-color .18s ease, box-shadow .18s ease;
   }
+  .co-new-row input:focus, .co-new-row select:focus { border-color:var(--adm-accent); box-shadow:0 0 0 3px var(--adm-accent-soft); outline:none; }
   .co-new-row input { flex:1; min-width:180px; }
-  .co-detail { display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+  .co-detail { display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--adm-border); }
   .co-detail.show { display:block; }
-  .co-detail h3 { font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:1px; font-weight:400; margin-bottom:10px; }
+  .co-detail h3 { font-family:'DM Sans',sans-serif; font-size:15px; font-weight:700; letter-spacing:0; color:var(--adm-text); margin-bottom:12px; }
   .co-members { list-style:none; margin-bottom:16px; }
-  .co-members li { padding:8px 0; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; font-size:12px; flex-wrap:wrap; }
+  .co-members li { padding:9px 0; border-bottom:1px solid var(--adm-border); display:flex; gap:12px; align-items:baseline; font-size:13px; flex-wrap:wrap; }
   .co-members li:last-child { border-bottom:none; }
-  .co-login-count { font-family:'JetBrains Mono',monospace; color:var(--muted); font-size:11px; margin-left:auto; }
+  .co-login-count { font-family:'DM Sans',sans-serif; color:var(--adm-muted); font-size:11.5px; margin-left:auto; font-variant-numeric:tabular-nums; }
 
   .con-audit { list-style:none; }
-  .con-audit li { padding:10px 14px; margin:0 -14px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; border-radius:8px; transition:background-color .15s ease; }
-  .con-audit li:hover { background:var(--panel-2); }
+  .con-audit li { padding:11px 14px; margin:0 -14px; border-bottom:1px solid var(--adm-border); display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; border-radius:8px; transition:background-color .15s ease; }
+  .con-audit li:hover { background:var(--adm-surface-2); }
   .con-audit li:last-child { border-bottom:none; }
-  .con-a-act { font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--accent-text); min-width:120px; }
-  .con-a-det { font-size:12px; flex:1; }
-  .con-a-who { color:var(--muted); font-size:11px; }
+  .con-a-act { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--adm-accent); min-width:120px; }
+  .con-a-det { font-size:13px; flex:1; color:var(--adm-text); }
+  .con-a-who { color:var(--adm-muted); font-size:12px; }
 
   .ai-engine-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-  .ai-engine-status { font-size:12px; color:var(--muted); }
-  .ai-engine-status b { color:var(--text); }
+  .ai-engine-status { font-size:13px; color:var(--adm-muted); }
+  .ai-engine-status b { color:var(--adm-text); }
 
   @media (max-width: 760px) {
     header { flex-wrap: wrap; height: auto; min-height: 56px; padding: 10px 14px; gap: 8px 12px; }
@@ -757,13 +840,24 @@
       grid-template-columns: 1fr;
       gap: 2px;
     }
+
+    /* Admin console: sidebar becomes a horizontal scrollable row above the
+       content, same technique as .tabs uses elsewhere in this file. */
+    .adm-shell { flex-direction: column; gap: 14px; }
+    .adm-nav {
+      position: static; width: 100%; flex: none;
+      flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    .adm-nav-item { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
+    .adm-nav-item.active { border-left-color: transparent; border-bottom-color: var(--adm-accent); }
+    .adm-card { padding: 16px; }
   }
 </style>
 </head>
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.33</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.34</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -2489,10 +2583,15 @@ function renderConsolePane() {
   const pane = $('consolePane');
   const tabs = consoleTabs();
   pane.innerHTML = `
-    ${tabs.length > 1 ? `<div class="ov-subtabs">
-      ${tabs.map(t => `<button class="ov-subtab${consoleSubTab === t.id ? ' active' : ''}" data-constab="${t.id}">${esc(t.label)}</button>`).join('')}
-    </div>` : `<div class="sub" style="margin-bottom:16px">Viewing as admin — role changes and platform stats require a superuser account.</div>`}
-    <div id="consoleContent"><div class="ov-section"><p style="color:var(--muted)">Loading…</p></div></div>
+    <div class="adm-shell">
+      ${tabs.length > 1 ? `<nav class="adm-nav">
+        ${tabs.map(t => `<button class="adm-nav-item${consoleSubTab === t.id ? ' active' : ''}" data-constab="${t.id}">${esc(t.label)}</button>`).join('')}
+      </nav>` : ''}
+      <div class="adm-content">
+        ${tabs.length <= 1 ? `<p class="adm-note">Viewing as admin — role changes and platform stats require a superuser account.</p>` : ''}
+        <div id="consoleContent"><div class="adm-card"><p style="color:var(--adm-muted)">Loading…</p></div></div>
+      </div>
+    </div>
   `;
   pane.querySelectorAll('[data-constab]').forEach(btn => {
     btn.addEventListener('click', () => { consoleSubTab = btn.dataset.constab; renderConsolePane(); });
@@ -2515,7 +2614,7 @@ async function loadConsoleOverview() {
       <div class="donut-card"><h3>Company Types</h3><div class="donut-box" id="con-donut-companies"></div></div>
       <div class="donut-card"><h3>Traffic Density <small>latest reading / billboard</small></h3><div class="donut-box" id="con-donut-density"></div></div>
     </div>
-    <div class="ov-section">
+    <div class="adm-card">
       <h3>Booked Revenue by Region</h3>
       <div class="bar-list" id="con-region-bars"></div>
     </div>
@@ -2553,7 +2652,7 @@ async function refreshConsoleOverview() {
     const maxSpend = Math.max(1, ...d.regionSpend.map(r => r.spend));
     $('con-region-bars').innerHTML = d.regionSpend.length
       ? d.regionSpend.map(r => barRow(r.area, r.spend, maxSpend, 'accent', fmtMoney)).join('')
-      : '<div style="color:var(--muted);font-size:12px">No booked revenue yet.</div>';
+      : '<div style="color:var(--adm-muted);font-size:12px">No booked revenue yet.</div>';
     animateIn($('con-region-bars'));
     wireTooltips($('con-region-bars'));
   } catch (e) { toast(e.message); }
@@ -2562,7 +2661,7 @@ async function refreshConsoleOverview() {
 /* ---- users: role changes + delete ---- */
 async function loadConsoleUsers() {
   $('consoleContent').innerHTML = `
-    <div class="ov-section">
+    <div class="adm-card">
       <h3>Users <small>all registered accounts</small></h3>
       <div class="con-scroll">
         <table class="con-table">
@@ -2619,7 +2718,7 @@ async function refreshConsoleUsers() {
 /* ---- companies: create + list + drill-down detail ---- */
 async function loadConsoleCompanies() {
   $('consoleContent').innerHTML = `
-    <div class="ov-section">
+    <div class="adm-card">
       <h3>Companies</h3>
       <div class="co-new-row">
         <input id="con-co-new-name" placeholder="New company name" />
@@ -2670,7 +2769,7 @@ async function refreshConsoleCompanies() {
         '<td>' + c.billboardCount + '</td>' +
         '<td>' + c.totalLogins + '</td>' +
       '</tr>'
-    ).join('') || '<tr><td colspan="5" style="color:var(--muted)">No companies yet.</td></tr>';
+    ).join('') || '<tr><td colspan="5" style="color:var(--adm-muted)">No companies yet.</td></tr>';
 
     document.querySelectorAll('#con-co-rows .co-name').forEach(elm =>
       elm.addEventListener('click', () => loadConsoleCompanyDetail(elm.dataset.co, elm.textContent)));
@@ -2696,19 +2795,20 @@ async function loadConsoleCompanyDetail(id, name) {
     $('con-co-detail-members').innerHTML = (d.members || []).map(m =>
       '<li><span class="role ' + m.role + '">' + m.role + '</span> ' + esc(m.name) + ' <span class="con-u-email">' + esc(m.email) + '</span>' +
       '<span class="co-login-count">' + m.loginCount + ' login' + (m.loginCount === 1 ? '' : 's') + ' · last ' + fmtConTime(m.last_login) + '</span></li>'
-    ).join('') || '<li style="color:var(--muted)">No members yet.</li>';
+    ).join('') || '<li style="color:var(--adm-muted)">No members yet.</li>';
     $('con-co-detail-audit').innerHTML = (d.audit || []).map(ev =>
       '<li><span class="con-a-act">' + esc(ev.action) + '</span>' +
       '<span class="con-a-det">' + esc(ev.detail || '') + '</span>' +
       '<span class="con-a-who">' + esc(ev.email || 'system') + ' · ' + fmtConTime(ev.created_at) + '</span></li>'
-    ).join('') || '<li><span class="con-a-det" style="color:var(--muted)">No audit events for this company yet.</span></li>';
+    ).join('') || '<li><span class="con-a-det" style="color:var(--adm-muted)">No audit events for this company yet.</span></li>';
   } catch (e) { toast(e.message); }
 }
 
 /* ---- ai engine: on-demand run with a streamed progress log ---- */
 async function loadConsoleTestData() {
   $('consoleContent').innerHTML = `
-    <div class="ov-section">
+    <div class="adm-card">
+      <h3>Test Data</h3>
       <p class="sub" style="margin-bottom:14px">Seeds a handful of clearly-marked demo companies, billboards, and traffic history for exercising this console — never shown on the public marketplace, never sampled by the real traffic engine, never billed against the real Google Routes API. Toggle off to remove it all again.</p>
       <div class="ai-engine-row">
         <button class="btn sm" id="con-testDataBtn">Loading…</button>
@@ -2725,10 +2825,12 @@ async function loadConsoleTestData() {
         $('con-testDataStatus').innerHTML = '<b>ON</b> — ' + d.companies + ' demo compan' + (d.companies === 1 ? 'y' : 'ies') + ', ' + d.billboards + ' billboard' + (d.billboards === 1 ? '' : 's');
         btn.textContent = 'Disable & Remove Test Data';
         btn.dataset.action = 'disable';
+        btn.classList.add('danger');
       } else {
         $('con-testDataStatus').textContent = 'OFF — no simulated data seeded';
         btn.textContent = 'Enable Simulated Test Data';
         btn.dataset.action = 'enable';
+        btn.classList.remove('danger');
       }
     } catch (e) {
       $('con-testDataStatus').textContent = 'Could not load status: ' + e.message;
@@ -2758,7 +2860,7 @@ async function loadConsoleTestData() {
 /* ---- audit log ---- */
 async function loadConsoleAudit() {
   $('consoleContent').innerHTML = `
-    <div class="ov-section">
+    <div class="adm-card">
       <h3>Audit Log</h3>
       <p class="sub" style="margin-bottom:14px">Last 100 security events — logins, failures, role changes, MFA activity.</p>
       <ul class="con-audit" id="con-audit-list"></ul>
@@ -2770,7 +2872,7 @@ async function loadConsoleAudit() {
       '<li><span class="con-a-act">' + esc(ev.action) + '</span>' +
       '<span class="con-a-det">' + esc(ev.detail || '') + '</span>' +
       '<span class="con-a-who">' + esc(ev.email || 'system') + ' · ' + fmtConTime(ev.created_at) + '</span></li>'
-    ).join('') || '<li><span class="con-a-det" style="color:var(--muted)">No events yet.</span></li>';
+    ).join('') || '<li><span class="con-a-det" style="color:var(--adm-muted)">No events yet.</span></li>';
   } catch (e) { toast(e.message); }
 }
 
