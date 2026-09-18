@@ -9,8 +9,9 @@ compatibility_flags = ["nodejs_compat"]
 # otherwise just once/hour (only the :00 tick), matching the old baseline
 # cadence off-peak. Each sample is one Google Routes API call for live vs.
 # free-flow duration on the billboard's resolved traffic segment — see
-# worker/src/index.js. Also refreshes each billboard's plain-language AI
-# insight narrative (Claude text call) when due.
+# worker/src/index.js. Does NOT touch the ai_insights narrative — that's a
+# separate, on-demand script (scripts/run-ai-insights.sh) so it never costs
+# a billed API call automatically.
 [triggers]
 crons = ["*/15 * * * *"]
 
@@ -23,5 +24,9 @@ database_id = "80403077-0db6-48c6-9d8f-9f4a13ec3a08"
 # Server-side Maps Platform key with the Routes API enabled and billing
 # active — must NOT be the same key embedded client-side in index.html/
 # dashboard.html (that one is referrer-restricted to Maps JavaScript API).
-
-# Set with: wrangler secret put ANTHROPIC_API_KEY
+#
+# IMPORTANT: re-run this (with no code changes in between) after every
+# `wrangler deploy` — this account's Wrangler version has been observed to
+# silently drop the secret binding on a code deploy (see git history/session
+# notes from 2026-09-14 to 2026-09-16 for the multi-day debugging trail this
+# caused). No ANTHROPIC_API_KEY needed here anymore.

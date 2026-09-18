@@ -22,12 +22,15 @@
    otherwise, matching the old baseline cadence off-peak. This is denser
    sampling exactly where the traffic actually varies hour-to-hour, without
    quadrupling Routes API usage across the whole day.
+
+   Does NOT generate the plain-language ai_insights narrative — that's a
+   separate, on-demand step (scripts/run-ai-insights.sh, triggered by typing
+   `RUN AI ENGINE`) so it costs nothing beyond this machine's existing Claude
+   Code session, instead of a billed Anthropic API key running automatically
+   on every cron tick.
    ================================================================ */
 
-const CLAUDE_MODEL = 'claude-opus-4-8';
 const MAX_CONCURRENT_REQUESTS = 4;
-const INSIGHT_REFRESH_DAYS = 7;
-const INSIGHT_MIN_NEW_SNAPSHOTS = 20;
 const COLOMBO_OFFSET_MINUTES = 5 * 60 + 30;
 const DEFAULT_PEAK_HOURS = [8, 9, 14, 17, 18]; // school/office commute pattern, used when a billboard hasn't declared its own
 const SEGMENT_OFFSET_METERS = 300; // each segment endpoint sits this far from the billboard, so the route through it is ~600m
@@ -169,64 +172,6 @@ async function sampleLiveTraffic(env, billboard) {
   ).bind('TS-' + shortId(), billboard.id, now, score, label, note, now, 'google_routes', durationS, staticS).run();
 }
 
-// Turns a billboard's accumulated snapshot history into a short plain-language
-// narrative, refreshed at most every INSIGHT_REFRESH_DAYS or after enough new
-// snapshots accumulate — this is a text-only call, no image involved.
-async function refreshInsightIfDue(env, billboard) {
-  const now = Date.now();
-  const lastUpdate = billboard.ai_insights_updated_at || 0;
-  const dueByAge = now - lastUpdate > INSIGHT_REFRESH_DAYS * 86400000;
-
-  const countRow = await env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM traffic_snapshots WHERE billboard_id=? AND captured_at > ?'
-  ).bind(billboard.id, lastUpdate).first();
-  const dueByVolume = (countRow?.n || 0) >= INSIGHT_MIN_NEW_SNAPSHOTS;
-
-  if (!dueByAge && !dueByVolume) return;
-
-  const rows = await env.DB.prepare(
-    'SELECT captured_at, congestion_score, density_label FROM traffic_snapshots WHERE billboard_id=? ORDER BY captured_at DESC LIMIT 200'
-  ).bind(billboard.id).all();
-  const snapshots = rows.results || [];
-  if (snapshots.length < 5) return; // not enough history yet to say anything useful
-
-  const summary = snapshots.map(s => {
-    const d = new Date(s.captured_at);
-    return `${d.toISOString().slice(0, 16).replace('T', ' ')} — score ${s.congestion_score} (${s.density_label})`;
-  }).join('\n');
-
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 300,
-      messages: [{
-        role: 'user',
-        content: `You're helping an outdoor-advertising provider judge a billboard location at "${billboard.title}" ` +
-          `(${billboard.area}), a ${billboard.type} billboard priced at LKR ${billboard.price}/month with a stated ` +
-          `daily traffic estimate of ${billboard.traffic} vehicles/day. Below is its recent collected traffic-congestion ` +
-          `history (0-100 congestion score, sampled a few times a day):\n\n${summary}\n\n` +
-          'Write 2-3 short sentences of plain-language findings and a recommendation — call out any clear peak-hour ' +
-          'pattern, note the overall congestion level, and say what that implies for billboard visibility/value. ' +
-          'No headers, no bullet points, just prose a busy provider can skim.'
-      }]
-    })
-  });
-  if (!resp.ok) { console.error('Insight call failed for', billboard.id, resp.status); return; }
-  const data = await resp.json();
-  const textBlock = (data.content || []).find(b => b.type === 'text');
-  if (!textBlock) return;
-
-  await env.DB.prepare('UPDATE billboards SET ai_insights=?, ai_insights_updated_at=? WHERE id=?')
-    .bind(textBlock.text.trim().slice(0, 2000), now, billboard.id)
-    .run();
-}
-
 // Fisher-Yates shuffle — spreads which billboard runs out of tick
 // time/budget last evenly across all active billboards, instead of it
 // always being the one that happens to sort last.
@@ -258,7 +203,7 @@ export default {
     // admin console's "Simulate test data" toggle) so fake demo billboards
     // never get sampled against the real Google Routes API or billed for it.
     const rows = await env.DB.prepare(
-      `SELECT b.id, b.lat, b.lng, b.facing, b.peak_hours, b.title, b.area, b.type, b.price, b.traffic, b.ai_insights_updated_at,
+      `SELECT b.id, b.lat, b.lng, b.facing, b.peak_hours,
               b.traffic_seg_origin_lat, b.traffic_seg_origin_lng, b.traffic_seg_dest_lat, b.traffic_seg_dest_lng, b.traffic_seg_resolved_at
        FROM billboards b LEFT JOIN companies c ON c.id = b.company_id
        WHERE b.approval_state='approved' AND COALESCE(c.is_test_data, 0) = 0`
@@ -282,6 +227,10 @@ export default {
     });
     await runBatch(shuffled(due), MAX_CONCURRENT_REQUESTS, b => sampleLiveTraffic(env, b));
 
-    await runBatch(billboards, MAX_CONCURRENT_REQUESTS, b => refreshInsightIfDue(env, b));
+    // The plain-language ai_insights narrative is generated separately, on
+    // demand, via `RUN AI ENGINE` in a terminal (see scripts/run-ai-insights.sh)
+    // — that uses this machine's Claude Code session instead of a billed
+    // Anthropic API key, same reasoning as the original screenshot-analysis
+    // pipeline this Worker replaced.
   }
 };
