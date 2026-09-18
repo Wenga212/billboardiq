@@ -26,14 +26,20 @@
     --shadow-sm:0 2px 10px rgba(23,26,23,.07), 0 1px 2px rgba(23,26,23,.06);
     --shadow-md:0 10px 28px rgba(23,26,23,.11), 0 2px 8px rgba(23,26,23,.06);
     --shadow-lg:0 24px 60px rgba(23,26,23,.18), 0 8px 20px rgba(23,26,23,.09);
-    /* Admin console skin — deliberately neutral/cool, distinct from the
-       brand's warm olive/lime, so the internal tool reads as its own
-       calmer "place" rather than more marketing chrome. Semantic colors
-       (role/status meaning) still come from --green/--amber/--red/--blue
-       above; these are only the neutral surface + one accent. */
-    --adm-bg:#F6F7F9; --adm-surface:#FFFFFF; --adm-surface-2:#EEF0F4; --adm-border:#E2E4EA;
-    --adm-text:#14161B; --adm-muted:#6B7280;
+    /* Admin console skin — its own "place" distinct from the brand's warm
+       olive/lime, built as a rich, colorful dashboard (solid-fill KPI
+       tiles, real elevation, bold type) rather than a flat neutral one.
+       Semantic colors (role/status meaning) still come from
+       --green/--amber/--red/--blue above; these are the console's surface,
+       accent, and the 5-tone KPI-tile fill rotation. Tile fills are solid
+       colors with their own built-in contrast for white text, so they're
+       defined once here (unconditionally, via :root) rather than per-theme. */
+    --adm-bg:#F0F1F5; --adm-surface:#FFFFFF; --adm-surface-2:#E7E9EF; --adm-border:#DCDFE7;
+    --adm-text:#14161B; --adm-muted:#666B78;
     --adm-accent:#4C4FE0; --adm-accent-ink:#FFFFFF; --adm-accent-soft:rgba(76,79,224,.10);
+    --adm-shadow-sm:0 1px 2px rgba(20,22,35,.06), 0 1px 1px rgba(20,22,35,.04);
+    --adm-shadow-md:0 10px 24px rgba(20,22,35,.10), 0 2px 6px rgba(20,22,35,.06);
+    --adm-tile-1:#3B6FE0; --adm-tile-2:#12A594; --adm-tile-3:#6D5CE0; --adm-tile-4:#B8791C; --adm-tile-5:#D9483A;
   }
   [data-theme="dark"] {
     --bg:#0b0d0c; --panel:#121514; --panel-2:#181b1a; --line:#242827;
@@ -47,9 +53,13 @@
     --shadow-sm:0 2px 12px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.35);
     --shadow-md:0 12px 30px rgba(0,0,0,.48), 0 3px 10px rgba(0,0,0,.36);
     --shadow-lg:0 28px 64px rgba(0,0,0,.6), 0 10px 24px rgba(0,0,0,.4);
-    --adm-bg:#101114; --adm-surface:#17181C; --adm-surface-2:#1E2024; --adm-border:#2A2C31;
-    --adm-text:#EDEEF2; --adm-muted:#9297A3;
-    --adm-accent:#7B7EF0; --adm-accent-ink:#12131A; --adm-accent-soft:rgba(123,126,240,.16);
+    /* Deep navy rather than flat charcoal — reads richer, and gives cards a
+       real lift off the page (surface is clearly lighter than bg). */
+    --adm-bg:#11131C; --adm-surface:#1B1E2C; --adm-surface-2:#242838; --adm-border:#2E3242;
+    --adm-text:#EDEEF4; --adm-muted:#9599AA;
+    --adm-accent:#7B84F5; --adm-accent-ink:#12131A; --adm-accent-soft:rgba(123,132,245,.18);
+    --adm-shadow-sm:0 1px 2px rgba(0,0,0,.35), 0 1px 1px rgba(0,0,0,.25);
+    --adm-shadow-md:0 14px 32px rgba(0,0,0,.45), 0 4px 10px rgba(0,0,0,.35);
   }
   [data-theme="light"] {
     --bg:#e9eae4;
@@ -676,83 +686,96 @@
   .hidden { display:none !important; }
 
   /* ================= ADMIN CONSOLE (superuser Console tab) =================
-     A deliberately separate, quieter visual system from the rest of this
-     file — flat neutral surfaces, one restrained accent, plain-case DM Sans
-     throughout (see --adm-* tokens above). `.adm-shell .kpi-tile` /
-     `.donut-card` / `.bar-row` / `.btn` below are scoped overrides of the
-     shared dashboard widgets — they only apply inside the console, so the
-     regular Overview tab and rest of the app are untouched. */
+     Its own rich, colorful dashboard system — solid-fill KPI tiles, real
+     elevation, bold type, a dark-navy dark theme — distinct from the rest
+     of this file's brand chrome (see --adm-* tokens above). `.adm-shell
+     .kpi-tile` / `.donut-card` / `.bar-row` / `.btn` below are scoped
+     overrides of the shared dashboard widgets — they only apply inside the
+     console, so the regular Overview tab and rest of the app are untouched. */
 
-  .adm-shell { display:flex; align-items:flex-start; gap:24px; }
+  .adm-shell { display:flex; align-items:flex-start; gap:20px; }
   .adm-nav {
-    flex:0 0 206px; position:sticky; top:76px;
-    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:12px;
-    padding:6px; display:flex; flex-direction:column; gap:2px;
+    flex:0 0 212px; position:sticky; top:76px;
+    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:14px;
+    padding:8px; display:flex; flex-direction:column; gap:3px;
+    box-shadow:var(--adm-shadow-sm);
   }
   .adm-nav-item {
-    display:flex; align-items:center; gap:9px; padding:9px 12px 9px 10px;
-    border-radius:8px; border-left:3px solid transparent;
-    font-size:13.5px; font-weight:500; color:var(--adm-muted); text-align:left;
-    transition:background-color .15s ease, color .15s ease, border-color .15s ease;
+    display:flex; align-items:center; gap:9px; padding:11px 14px;
+    border-radius:9px;
+    font-size:13.5px; font-weight:600; color:var(--adm-muted); text-align:left;
+    transition:background-color .15s ease, color .15s ease, box-shadow .15s ease;
   }
   .adm-nav-item:hover { color:var(--adm-text); background:var(--adm-surface-2); }
-  .adm-nav-item.active { color:var(--adm-accent); background:var(--adm-accent-soft); border-left-color:var(--adm-accent); font-weight:600; }
+  .adm-nav-item.active { color:var(--adm-accent-ink); background:var(--adm-accent); box-shadow:var(--adm-shadow-sm); }
   .adm-content { flex:1; min-width:0; display:flex; flex-direction:column; gap:16px; }
   .adm-note { font-size:12.5px; color:var(--adm-muted); }
 
   .adm-card {
-    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:12px;
-    padding:20px 22px;
+    background:var(--adm-surface); border:1px solid var(--adm-border); border-radius:14px;
+    padding:20px 22px; box-shadow:var(--adm-shadow-md);
   }
   .adm-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
   .adm-card h3 {
-    font-family:'DM Sans',sans-serif; font-size:15px; font-weight:700; letter-spacing:0;
+    font-family:'DM Sans',sans-serif; font-size:17px; font-weight:800; letter-spacing:-.2px;
     color:var(--adm-text); margin:0 0 16px;
   }
   .adm-card-head h3 { margin:0; }
-  .adm-card h3 small { font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:400; color:var(--adm-muted); margin-left:8px; }
+  .adm-card h3 small { font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:500; letter-spacing:0; color:var(--adm-muted); margin-left:8px; }
   .adm-card p.sub { color:var(--adm-muted); font-size:13px; }
 
-  /* Scoped overrides of the shared dashboard widgets — flatten and quiet
-     them down without touching their global definitions (still used by the
-     regular Overview tab outside the console). */
+  /* Scoped overrides of the shared dashboard widgets — a colorful, elevated
+     treatment inside the console without touching their global definitions
+     (still used by the regular Overview tab outside the console). KPI tiles
+     cycle through 5 solid brand tones (--adm-tile-1..5) — a deliberate
+     rotation for visual variety across a KPI row, same idea as the rest of
+     the app's own KPI tiles, not tied to any specific metric's meaning. */
+  .adm-shell .kpi-grid, .adm-shell .donut-grid { gap:12px; }
   .adm-shell .kpi-tile {
-    background:var(--adm-surface); border:1px solid var(--adm-border); box-shadow:none; border-radius:10px;
+    background:var(--adm-tile-1); border:none; box-shadow:var(--adm-shadow-md); border-radius:14px;
+    padding:18px 20px;
   }
   .adm-shell .kpi-tile::before { display:none; }
-  .adm-shell .kpi-tile:hover { transform:none; box-shadow:none; border-color:var(--adm-border); }
-  .adm-shell .kpi-label { font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--adm-muted); }
-  .adm-shell .kpi-value { font-family:'DM Sans',sans-serif; font-size:24px; font-weight:700; color:var(--adm-text); font-variant-numeric:tabular-nums; }
-  .adm-shell .kpi-tile.warn .kpi-value { color:var(--amber); }
+  .adm-shell .kpi-tile:hover { transform:translateY(-2px); box-shadow:var(--adm-shadow-md); }
+  .adm-shell .kpi-tile:nth-child(5n+2) { background:var(--adm-tile-2); }
+  .adm-shell .kpi-tile:nth-child(5n+3) { background:var(--adm-tile-3); }
+  .adm-shell .kpi-tile:nth-child(5n+4) { background:var(--adm-tile-4); }
+  .adm-shell .kpi-tile:nth-child(5n+5) { background:var(--adm-tile-5); }
+  .adm-shell .kpi-label { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; letter-spacing:0; text-transform:none; color:rgba(255,255,255,.82); }
+  .adm-shell .kpi-value { font-family:'DM Sans',sans-serif; font-size:27px; font-weight:800; color:#fff; font-variant-numeric:tabular-nums; letter-spacing:-.3px; }
+  .adm-shell .kpi-tile.warn .kpi-value { color:#fff; }
   [data-theme="dark"] .adm-shell .kpi-value { text-shadow:none; }
 
   .adm-shell .donut-card {
-    background:var(--adm-surface); border:1px solid var(--adm-border); box-shadow:none;
+    background:var(--adm-surface); border:1px solid var(--adm-border); box-shadow:var(--adm-shadow-md);
   }
-  .adm-shell .donut-card:hover { transform:none; box-shadow:none; }
-  .adm-shell .donut-card h3 { font-family:'DM Sans',sans-serif; font-size:13.5px; font-weight:600; letter-spacing:0; color:var(--adm-text); }
-  .adm-shell .donut-center-value { font-family:'DM Sans',sans-serif; font-weight:700; letter-spacing:0; font-variant-numeric:tabular-nums; }
-  .adm-shell .donut-center-label { font-family:'DM Sans',sans-serif; font-size:10px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--adm-muted); }
-  .adm-shell .donut-legend-value { font-family:'DM Sans',sans-serif; font-weight:600; font-variant-numeric:tabular-nums; }
+  .adm-shell .donut-card:hover { transform:translateY(-2px); box-shadow:var(--adm-shadow-md); }
+  .adm-shell .donut-card h3 { font-family:'DM Sans',sans-serif; font-size:14.5px; font-weight:700; letter-spacing:0; color:var(--adm-text); }
+  .adm-shell .donut-center-value { font-family:'DM Sans',sans-serif; font-size:24px; font-weight:800; letter-spacing:-.2px; font-variant-numeric:tabular-nums; }
+  .adm-shell .donut-center-label { font-family:'DM Sans',sans-serif; font-size:10px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--adm-muted); }
+  .adm-shell .donut-legend-value { font-family:'DM Sans',sans-serif; font-weight:700; font-variant-numeric:tabular-nums; }
   .adm-shell .donut-legend-label { color:var(--adm-muted); }
   .adm-shell .donut-legend-item:hover { background:var(--adm-surface-2); }
 
   .adm-shell .bar-row:hover { background:var(--adm-surface-2); }
-  .adm-shell .bar-label { color:var(--adm-text); }
-  .adm-shell .bar-track { background:var(--adm-surface-2); }
-  .adm-shell .bar-value { font-family:'DM Sans',sans-serif; font-weight:500; color:var(--adm-muted); font-variant-numeric:tabular-nums; }
-  .adm-shell .bar-fill.accent { background:var(--adm-accent); }
+  .adm-shell .bar-label { color:var(--adm-text); font-weight:500; }
+  .adm-shell .bar-track { background:var(--adm-surface-2); height:18px; }
+  .adm-shell .bar-value { font-family:'DM Sans',sans-serif; font-weight:700; color:var(--adm-text); font-variant-numeric:tabular-nums; }
+  .adm-shell .bar-fill.accent { background:linear-gradient(90deg, var(--adm-accent), color-mix(in srgb, var(--adm-accent) 70%, var(--adm-tile-2))); }
 
-  .adm-shell .btn { background:var(--adm-accent); color:var(--adm-accent-ink); font-weight:600; letter-spacing:0; text-transform:none; border-radius:8px; box-shadow:none; }
-  .adm-shell .btn:hover { transform:none; filter:brightness(1.08); box-shadow:none; }
+  .adm-shell .btn { background:var(--adm-accent); color:var(--adm-accent-ink); font-weight:700; letter-spacing:0; text-transform:none; border-radius:9px; box-shadow:var(--adm-shadow-sm); }
+  .adm-shell .btn:hover { transform:translateY(-1px); filter:brightness(1.08); box-shadow:var(--adm-shadow-md); }
   .adm-shell .btn.danger { background:var(--red); color:#fff; }
 
   table.con-table { width:100%; border-collapse:collapse; min-width:640px; }
+  table.con-table thead { background:var(--adm-surface-2); }
   table.con-table th {
-    font-family:'DM Sans',sans-serif; font-size:11px; font-weight:600;
+    font-family:'DM Sans',sans-serif; font-size:11px; font-weight:700;
     color:var(--adm-muted); text-align:left;
-    padding:10px 14px; border-bottom:1px solid var(--adm-border);
+    padding:11px 14px;
   }
+  table.con-table th:first-child { border-radius:8px 0 0 8px; }
+  table.con-table th:last-child { border-radius:0 8px 8px 0; }
   table.con-table td { padding:12px 14px; border-bottom:1px solid var(--adm-border); vertical-align:middle; font-size:13px; transition:background-color .15s ease; }
   table.con-table tr:last-child td { border-bottom:none; }
   table.con-table tr:hover td { background:var(--adm-surface-2); }
@@ -848,8 +871,7 @@
       position: static; width: 100%; flex: none;
       flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch;
     }
-    .adm-nav-item { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
-    .adm-nav-item.active { border-left-color: transparent; border-bottom-color: var(--adm-accent); }
+    .adm-nav-item { white-space: nowrap; }
     .adm-card { padding: 16px; }
   }
 </style>
@@ -857,7 +879,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.34</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.35</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
