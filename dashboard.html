@@ -457,6 +457,8 @@
   .trend-chart .line { fill:none; stroke:var(--accent); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
   .trend-chart .dot { fill:var(--accent); stroke:var(--panel); stroke-width:2; }
   .trend-chart .chart-label { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; fill:var(--text); }
+  .trend-chart .trend-ref { stroke:var(--muted); stroke-width:1; stroke-dasharray:4 3; opacity:.7; }
+  .trend-chart .trend-ref-label { font-family:'JetBrains Mono',monospace; font-size:8px; letter-spacing:.5px; fill:var(--muted); }
 
   /* listing grid */
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px; }
@@ -912,7 +914,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.38</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.39</span></a>
   <div class="breadcrumb">DASHBOARD / <span id="crumb">OVERVIEW</span></div>
   <div class="top-actions">
     <span class="pill static" id="whoami"></span>
@@ -3518,16 +3520,14 @@ function aiInsightsSectionHTML(data) {
 
 // Google's own traffic-layer legend (green/orange/red/dark-red, tied to
 // speed relative to free-flow) is where these bands come from — see
-// analyzeScreenshot()'s prompt in worker/src/index.js and
-// functions/api/[[route]].js. labelForScore() gives discrete words
-// (free/heavy/severe) for tooltips/KPI tiles on fixed 0-100 bands, so
-// "heavy" means the same thing on every listing. severityColor() shades a
-// single hue (the same lime as the "+ Add Billboard" button) across
-// `min`..`max`, which callers now pass as the cross-listing range (see
-// data.globalMin/globalMax from the /traffic endpoint, blended with this
-// billboard's own range in renderTrafficBody) rather than this billboard's
-// own observed range — so a location that's quiet next to every other
-// listing reads as visibly lighter, not just lighter than its own best day.
+// sampleLiveTraffic() in worker/src/index.js. labelForScore() gives
+// discrete words (free/heavy/severe) for tooltips/KPI tiles on fixed 0-100
+// bands, so "heavy" means the same thing on every listing. severityColor()
+// shades a single hue (the same lime as the "+ Add Billboard" button) across
+// `min`..`max`, which callers now pass as THIS billboard's own observed
+// range (see renderTrafficBody) — a quiet location's real variation gets
+// the full color range to itself instead of being squashed into a sliver
+// near "lightest" next to a busy listing's range.
 function labelForScore(v) {
   if (v >= 85) return 'severe';
   if (v >= 50) return 'heavy';
@@ -3732,15 +3732,14 @@ function renderTrafficBody(b, data) {
   const filledValues = filledSlots.map(x => x.value);
   const peakSlot = filledValues.reduce((best, v, i) => (v != null && (best == null || v > filledValues[best])) ? i : best, null);
   // Color range and bar-height scale shared by every chart/tile in this
-  // section. Scaled against every listing's readings (data.globalMin/Max —
-  // see the /traffic endpoint), not just this billboard's own range, so a
-  // quiet location's bars/shading sit visibly lower than a busy location's
-  // instead of both independently stretching to fill their own axis. Falls
-  // back to this billboard's own range if the global figures are missing
-  // (e.g. no other listing has data yet).
+  // section — THIS billboard's own observed range, not the platform's, so a
+  // quiet location's real variation fills the chart instead of being
+  // squashed near zero next to a busy listing's much wider range. Each
+  // location's analytics are only ever as rich as its own data, never
+  // borrowed from anyone else's.
   const validSlotValues = filledValues.filter(v => v != null);
-  const minScore = data.globalMin != null ? Math.min(data.globalMin, ...validSlotValues) : Math.min(...validSlotValues);
-  const maxScore = data.globalMax != null ? Math.max(data.globalMax, ...validSlotValues) : Math.max(...validSlotValues);
+  const minScore = Math.min(...validSlotValues);
+  const maxScore = Math.max(...validSlotValues);
 
   const dailyTraffic = (b.dataSources && b.dataSources.manual && b.dataSources.manual.enabled) ? b.dataSources.manual.traffic : null;
   const slotVehicleEst = estimateSlotVehicles(filledValues, dailyTraffic);
@@ -3767,7 +3766,7 @@ function renderTrafficBody(b, data) {
     </div>
     <div class="ov-section">
       <h3>Congestion Trend</h3>
-      ${trendChartSvg(trendEntries, minScore, maxScore)}
+      ${trendChartSvg(trendEntries, minScore, maxScore, data.globalAvg)}
     </div>
     <div class="ov-section">
       <h3>Peak Hours <small>${peakSlot != null ? 'busiest around ' + slotLabel(peakSlot) + (peakDurationMin > 0 ? ', typically for ' + fmtDuration(peakDurationMin) : '') : ''}</small></h3>
@@ -3788,11 +3787,11 @@ function renderTrafficBody(b, data) {
 }
 
 // .chart/.bar bars colored by a continuous shade of the brand lime (see
-// severityColor()) and sized against `max` (the cross-listing high, from
-// renderTrafficBody's minScore/maxScore) rather than this billboard's own
-// peak slot — so a quiet location's bars sit visibly lower than a busy
-// one's instead of both stretching to fill their own axis. `slots` is the
-// gap-filled 48-entry (30-min) array from fillSlotGaps(): every slot gets a
+// severityColor()) and sized against `max` — THIS billboard's own observed
+// peak (renderTrafficBody's minScore/maxScore) — so every bar fills its
+// full height against what this location actually does, not a busier
+// listing's ceiling. `slots` is the gap-filled 48-entry (30-min) array from
+// fillSlotGaps(): every slot gets a
 // bar so the build-up into each peak reads as one continuous shape, but
 // slots without a real sample render at reduced opacity and their tooltip
 // says so. "Free" doesn't get called out by name since it's the least busy
@@ -3840,7 +3839,7 @@ function smoothPath(points) {
   return d;
 }
 
-function trendChartSvg(entries, minScore, maxScore) {
+function trendChartSvg(entries, minScore, maxScore, globalAvg) {
   if (entries.filter(e => e[4]).length < 2) {
     return '<div class="src-empty">Need at least two readings to chart a trend.</div>';
   }
@@ -3849,18 +3848,25 @@ function trendChartSvg(entries, minScore, maxScore) {
   const times = entries.map(e => e[2]);
   const tMin = times[0], tMax = times[times.length - 1];
   const x = t => padL + (tMax === tMin ? 0 : ((t - tMin) / (tMax - tMin)) * innerW);
-  // Normalized to THIS chart's own plotted values, not the fixed 0-100 scale
-  // (that's still used for color/severity via minScore/maxScore, which are
-  // shared across every listing on purpose). Real congestion scores cluster
-  // in a narrow band — a quiet location might only ever swing 0-10 — so a
-  // 0-100 floor flattened every trend into a near-invisible line hugging the
-  // bottom. The chart's own lowest plotted value now sits on the x-axis and
-  // its highest at the top, so whatever variation actually exists fills the
-  // available height, however small that variation is in absolute terms.
+  // Normalized to THIS chart's own plotted values — color/severity share the
+  // same billboard-own min/max now too (see renderTrafficBody), so the shape
+  // AND the shading both reflect only this location's own density. Real
+  // congestion scores cluster in a narrow band — a quiet location might only
+  // ever swing 0-10 — so a 0-100 floor flattened every trend into a
+  // near-invisible line hugging the bottom. The chart's own lowest plotted
+  // value now sits on the x-axis and its highest at the top, so whatever
+  // variation actually exists fills the available height, however small
+  // that variation is in absolute terms. globalAvg (the platform-wide
+  // average, from the /traffic endpoint) is drawn as a separate dashed
+  // reference line on this same local scale — context to compare against,
+  // never a scale of its own — and is left off entirely when it falls
+  // outside what this chart can show without distorting the axis.
   const plotted = entries.map(e => e[1]);
   const vFloor = Math.min(...plotted), vCeil = Math.max(...plotted);
   const vRange = Math.max(1, vCeil - vFloor);
   const y = v => padT + innerH - (v - vFloor) / vRange * innerH;
+  const showGlobalAvg = globalAvg != null && globalAvg >= vFloor - vRange * 0.15 && globalAvg <= vCeil + vRange * 0.15;
+  const globalAvgY = showGlobalAvg ? Math.max(padT, Math.min(padT + innerH, y(globalAvg))) : null;
 
   // entries include both real readings and gap-filled estimates (see
   // buildSmoothSeries) — both feed the visual curve, but only real ones get
@@ -3896,6 +3902,8 @@ function trendChartSvg(entries, minScore, maxScore) {
       <line class="grid" x1="${padL}" y1="${padT.toFixed(1)}" x2="${W - padR}" y2="${padT.toFixed(1)}" />
       <path class="area" d="${areaPath}" style="fill:url(#${gradId})" />
       <path class="line" d="${linePath}" style="stroke:url(#${gradId})" />
+      ${showGlobalAvg ? `<line class="trend-ref" x1="${padL}" y1="${globalAvgY.toFixed(1)}" x2="${W - padR}" y2="${globalAvgY.toFixed(1)}"><title>Overall average across every listing: ${globalAvg}</title></line>
+      <text class="trend-ref-label" x="${(W - padR + 6).toFixed(1)}" y="${(globalAvgY + 3).toFixed(1)}">AVG</text>` : ''}
       <circle class="dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" style="fill:${lastColor}" />
       ${lastLabelText}
       ${hitCircles}
