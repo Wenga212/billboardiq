@@ -164,8 +164,58 @@
     container.querySelector('.donut-svg-box').classList.toggle('empty', !total);
   }
 
+  // Parses a rendered stat string like "LKR 1.2M", "1,234", "58%" or "150K"
+  // into { prefix, suffix, value (real units), decimals, mult, useCommas } so
+  // it can be re-formatted at any intermediate value during a count-up tween.
+  // Strings with no digit at all ("HEAVY", "—") or more than one numeric run
+  // ("~2m 15s") don't match and are left completely alone — only single-number
+  // stats animate; everything else just renders as normal, static text.
+  function parseStatText(text) {
+    const m = String(text).trim().match(/^([^\d]*)([\d][\d,]*(?:\.\d+)?)([a-zA-Z%]*)$/);
+    if (!m) return null;
+    const numStr = m[2].replace(/,/g, '');
+    const suffix = m[3];
+    const decimals = (numStr.split('.')[1] || '').length;
+    const mult = /^k$/i.test(suffix) ? 1e3 : /^m$/i.test(suffix) ? 1e6 : 1;
+    return { prefix: m[1], suffix, value: parseFloat(numStr) * mult, decimals, mult, useCommas: mult === 1 && !suffix };
+  }
+  function formatStat(n, meta) {
+    const shown = n / meta.mult;
+    const numText = meta.useCommas ? Math.round(shown).toLocaleString('en-US') : shown.toFixed(meta.decimals);
+    return meta.prefix + numText + meta.suffix;
+  }
+  const REDUCED_MOTION = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Tweens every .kpi-value / .stat-value / .donut-center-value under `root`
+  // (default: whole document) from its last-known numeric value to whatever
+  // was just rendered into it — called after each re-render so KPIs/donut
+  // totals count up (or down) live instead of hard-snapping to the new number.
+  // Safe to call repeatedly: an element whose text hasn't changed since the
+  // last call is skipped, so re-running it on an unrelated pane is cheap.
+  function animateStatNumbers(root) {
+    (root || document).querySelectorAll('.kpi-value, .stat-value, .donut-center-value').forEach(el => {
+      const targetText = el.textContent;
+      if (el.dataset.statTarget === targetText) return;
+      const meta = parseStatText(targetText);
+      if (!meta) { el.dataset.statTarget = targetText; return; }
+      el.dataset.statTarget = targetText;
+      if (REDUCED_MOTION) { el.dataset.statValue = meta.value; return; }
+      const fromVal = el.dataset.statValue != null ? Number(el.dataset.statValue) : 0;
+      el.dataset.statValue = meta.value;
+      const start = performance.now();
+      const duration = 700;
+      (function tick(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = t < 1 ? formatStat(fromVal + (meta.value - fromVal) * eased, meta) : targetText;
+        if (t < 1) requestAnimationFrame(tick);
+      })(start);
+    });
+  }
+
   window.renderDonut = renderDonut;
   window.chartTooltip = { show: showTooltip, hide: hideTooltip };
   window.wireTooltips = wireTooltips;
   window.animateIn = animateIn;
+  window.animateStatNumbers = animateStatNumbers;
 })();

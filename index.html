@@ -441,6 +441,95 @@
     border-color: var(--accent);
   }
 
+  .more-filters-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 18px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .more-filters-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 5px 2px;
+    transition: color .15s;
+  }
+  .more-filters-btn:hover { color: var(--text); }
+  .more-filters-btn .caret { transition: transform .15s; font-size: 9px; }
+  .more-filters-btn[aria-expanded="true"] .caret { transform: rotate(180deg); }
+  .more-filters-btn .filter-count {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-radius: 999px;
+    font-size: 9px;
+    padding: 1px 6px;
+    line-height: 1.4;
+  }
+  .clear-filters-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color .15s;
+  }
+  .clear-filters-btn:hover { color: var(--text); }
+
+  .filter-panel {
+    padding: 12px 18px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-2);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .filter-group-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .filter-panel select {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .5px;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  .price-range { display: flex; align-items: center; gap: 8px; }
+  .price-range input {
+    flex: 1; min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 8px 10px;
+  }
+  .price-range span { color: var(--muted); font-size: 11px; }
+  .inline-check {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: .5px; text-transform: uppercase;
+    color: var(--muted); cursor: pointer;
+  }
+  .inline-check input { cursor: pointer; }
+
   .listings { overflow-y: auto; flex: 1; overscroll-behavior: contain; }
   .listings::-webkit-scrollbar { width: 6px; }
   .listings::-webkit-scrollbar-thumb { background: var(--line); }
@@ -1109,6 +1198,7 @@
     /* iOS Safari zooms the page on focus of any input under 16px — keep
        everything at/above that on mobile regardless of the desktop size. */
     .search-row input, .search-row select { font-size: 16px; }
+    .filter-panel select, .price-range input { font-size: 16px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1128,7 +1218,7 @@
 <body>
 
 <header>
-  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.36</span></a>
+  <a class="logo" href="/index.html">BILLBOARD<b>IQ</b><span class="app-version">v1.37</span></a>
   <div class="top-actions">
     <button class="icon-btn" id="trafficPill" title="Live traffic layer" aria-label="Toggle live traffic layer" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1179,13 +1269,45 @@
         <option value="cpm-asc">CPM ↑</option>
       </select>
     </div>
-    <div class="filters">
-      <button class="chip active" data-filter="all">All</button>
-      <button class="chip" data-filter="available">Available</button>
-      <button class="chip" data-filter="hoarding">Hoarding</button>
-      <button class="chip" data-filter="banner">Banner</button>
-      <button class="chip" data-filter="digital_display">Digital Display</button>
-      <button class="chip" data-filter="highway">Highway</button>
+    <div class="filters" id="statusFilters">
+      <button class="chip active" data-status="all">All</button>
+      <button class="chip" data-status="available">Available</button>
+      <button class="chip" data-status="pending">Pending</button>
+      <button class="chip" data-status="booked">Booked</button>
+    </div>
+    <div class="filters" id="typeFilters">
+      <button class="chip" data-type="hoarding">Hoarding</button>
+      <button class="chip" data-type="banner">Banner</button>
+      <button class="chip" data-type="digital_display">Digital Display</button>
+    </div>
+    <div class="more-filters-row">
+      <button class="more-filters-btn" id="moreFiltersBtn" aria-expanded="false">
+        More Filters <span class="filter-count hidden" id="moreFiltersCount">0</span><span class="caret">▾</span>
+      </button>
+      <button class="clear-filters-btn" id="clearFiltersBtn">Clear all</button>
+    </div>
+    <div class="filter-panel hidden" id="filterPanel">
+      <div>
+        <div class="filter-group-label">Category</div>
+        <div class="filters" id="categoryFilters" style="padding:0; border:none;">
+          <button class="chip" data-category="highway">Highway</button>
+          <button class="chip" data-category="arterial">Arterial</button>
+          <button class="chip" data-category="local">Local</button>
+        </div>
+      </div>
+      <div>
+        <div class="filter-group-label">Area / Neighbourhood</div>
+        <select id="areaFilter"><option value="">All areas</option></select>
+      </div>
+      <div>
+        <div class="filter-group-label">Price / month (LKR)</div>
+        <div class="price-range">
+          <input id="priceMin" type="number" min="0" step="1000" placeholder="Min" />
+          <span>–</span>
+          <input id="priceMax" type="number" min="0" step="1000" placeholder="Max" />
+        </div>
+      </div>
+      <label class="inline-check"><input type="checkbox" id="illuminatedOnly" /> Illuminated only</label>
     </div>
     <div class="listings" id="listings"></div>
   </aside>
@@ -1282,7 +1404,12 @@ async function loadBillboards() {
 let engine = null;            // 'google' | 'leaflet'
 let theme = (function(){ try { return localStorage.getItem('bbiq-theme') || 'light'; } catch(e) { return 'light'; }})();
 let activeId = null;
-let currentFilter = 'all';
+let statusFilter = 'all';         // all | available | pending | booked
+let typeFilters = new Set();      // hoarding | banner | digital_display — empty = all
+let categoryFilters = new Set();  // highway | arterial | local — empty = all
+let areaFilter = '';
+let priceMin = null, priceMax = null;
+let illuminatedOnly = false;
 let searchTerm = '';
 let sortMode = 'featured';
 let trafficOn = false;
@@ -1456,6 +1583,7 @@ function initGoogle() {
   gTraffic = new google.maps.TrafficLayer();
   setTraffic(true);
   updateEngineUI();
+  syncMapMarkers(visibleBillboards());
   if (activeId) { focusMap(billboards.find(x => x.id === activeId)); setActiveMarker(activeId); }
 }
 
@@ -1477,6 +1605,7 @@ function fallbackLeaflet(reason) {
       lMarkers[b.id] = m;
     });
     updateEngineUI();
+    syncMapMarkers(visibleBillboards());
     if (reason && CONFIG.GOOGLE_MAPS_API_KEY) toast(reason);
     if (activeId) { focusMap(billboards.find(x => x.id === activeId)); setActiveMarker(activeId); }
   }, () => {
@@ -1523,9 +1652,13 @@ function typeLabel(t) { return TYPE_LABELS[t] || String(t || '').toUpperCase(); 
 
 function visibleBillboards() {
   let list = billboards.filter(b => {
-    if (currentFilter === 'available' && b.status !== 'available') return false;
-    if (['hoarding', 'banner', 'digital_display'].includes(currentFilter) && b.type !== currentFilter) return false;
-    if (currentFilter === 'highway' && b.category !== 'highway') return false;
+    if (statusFilter !== 'all' && b.status !== statusFilter) return false;
+    if (typeFilters.size && !typeFilters.has(b.type)) return false;
+    if (categoryFilters.size && !categoryFilters.has(b.category)) return false;
+    if (areaFilter && b.area !== areaFilter) return false;
+    if (priceMin != null && b.price < priceMin) return false;
+    if (priceMax != null && b.price > priceMax) return false;
+    if (illuminatedOnly && !b.illuminated) return false;
     if (searchTerm) {
       const hay = (b.title + ' ' + b.area + ' ' + b.id).toLowerCase();
       if (!hay.includes(searchTerm)) return false;
@@ -1539,10 +1672,63 @@ function visibleBillboards() {
   return list;
 }
 
+// Populates the Area filter dropdown from whatever billboards actually loaded
+// (demo data or the live API), so it always lists real neighbourhoods.
+function populateAreaFilter() {
+  const sel = document.getElementById('areaFilter');
+  if (!sel) return;
+  const areas = Array.from(new Set(billboards.map(b => b.area).filter(Boolean))).sort();
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All areas</option>' +
+    areas.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+  if (areas.includes(current)) sel.value = current;
+}
+
+// Keeps the map's own markers (not just the sidebar list) in sync with the
+// active filters — a marker for a filtered-out billboard is hidden, not removed,
+// so it can reappear instantly once the filter that excluded it is cleared.
+function syncMapMarkers(list) {
+  const visibleIds = new Set(list.map(b => b.id));
+  if (engine === 'google') {
+    Object.keys(gOverlays).forEach(id => {
+      const ov = gOverlays[id];
+      if (ov) ov.setMap(visibleIds.has(id) ? gmap : null);
+    });
+  } else if (engine === 'leaflet' && lmap) {
+    Object.keys(lMarkers).forEach(id => {
+      const m = lMarkers[id];
+      if (!m) return;
+      const shouldShow = visibleIds.has(id);
+      const onMap = lmap.hasLayer(m);
+      if (shouldShow && !onMap) lmap.addLayer(m);
+      else if (!shouldShow && onMap) lmap.removeLayer(m);
+    });
+  }
+}
+
+function activeFilterCount() {
+  let n = 0;
+  if (statusFilter !== 'all') n++;
+  n += typeFilters.size;
+  n += categoryFilters.size;
+  if (areaFilter) n++;
+  if (priceMin != null) n++;
+  if (priceMax != null) n++;
+  if (illuminatedOnly) n++;
+  return n;
+}
+
 function renderListings() {
   const el = document.getElementById('listings');
   const list = visibleBillboards();
   document.getElementById('regionLine').textContent = 'COLOMBO • ' + list.length + ' / ' + billboards.length + ' SITES';
+  syncMapMarkers(list);
+  const countEl = document.getElementById('moreFiltersCount');
+  if (countEl) {
+    const n = activeFilterCount();
+    countEl.textContent = n;
+    countEl.classList.toggle('hidden', n === 0);
+  }
   if (!list.length) {
     el.innerHTML = '<div class="no-results">No sites match your filters.<br/><button class="clear-link" onclick="clearFilters()">Clear filters</button></div>';
     return;
@@ -1575,21 +1761,69 @@ function renderListings() {
   });
 }
 function clearFilters() {
-  currentFilter = 'all'; searchTerm = ''; sortMode = 'featured';
+  statusFilter = 'all'; typeFilters.clear(); categoryFilters.clear();
+  areaFilter = ''; priceMin = null; priceMax = null; illuminatedOnly = false;
+  searchTerm = ''; sortMode = 'featured';
   document.getElementById('q').value = '';
   document.getElementById('sort').value = 'featured';
-  document.querySelectorAll('.chip').forEach(x => x.classList.toggle('active', x.dataset.filter === 'all'));
+  document.querySelectorAll('#statusFilters .chip').forEach(x => x.classList.toggle('active', x.dataset.status === 'all'));
+  document.querySelectorAll('#typeFilters .chip, #categoryFilters .chip').forEach(x => x.classList.remove('active'));
+  document.getElementById('areaFilter').value = '';
+  document.getElementById('priceMin').value = '';
+  document.getElementById('priceMax').value = '';
+  document.getElementById('illuminatedOnly').checked = false;
   renderListings();
 }
 
-document.querySelectorAll('.chip').forEach(c => {
+// Status is single-select (a billboard only has one), so its chips act as a
+// radio group. Type and Category are independent multi-select toggles.
+document.querySelectorAll('#statusFilters .chip').forEach(c => {
   c.addEventListener('click', () => {
-    document.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('#statusFilters .chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
-    currentFilter = c.dataset.filter;
+    statusFilter = c.dataset.status;
     renderListings();
   });
 });
+document.querySelectorAll('#typeFilters .chip').forEach(c => {
+  c.addEventListener('click', () => {
+    c.classList.toggle('active');
+    if (c.classList.contains('active')) typeFilters.add(c.dataset.type);
+    else typeFilters.delete(c.dataset.type);
+    renderListings();
+  });
+});
+document.querySelectorAll('#categoryFilters .chip').forEach(c => {
+  c.addEventListener('click', () => {
+    c.classList.toggle('active');
+    if (c.classList.contains('active')) categoryFilters.add(c.dataset.category);
+    else categoryFilters.delete(c.dataset.category);
+    renderListings();
+  });
+});
+document.getElementById('areaFilter').addEventListener('change', e => {
+  areaFilter = e.target.value;
+  renderListings();
+});
+document.getElementById('priceMin').addEventListener('input', e => {
+  priceMin = e.target.value === '' ? null : Number(e.target.value);
+  renderListings();
+});
+document.getElementById('priceMax').addEventListener('input', e => {
+  priceMax = e.target.value === '' ? null : Number(e.target.value);
+  renderListings();
+});
+document.getElementById('illuminatedOnly').addEventListener('change', e => {
+  illuminatedOnly = e.target.checked;
+  renderListings();
+});
+document.getElementById('moreFiltersBtn').addEventListener('click', () => {
+  const panel = document.getElementById('filterPanel');
+  const btn = document.getElementById('moreFiltersBtn');
+  const open = panel.classList.toggle('hidden') === false;
+  btn.setAttribute('aria-expanded', String(open));
+});
+document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
 document.getElementById('q').addEventListener('input', e => {
   searchTerm = e.target.value.trim().toLowerCase();
   renderListings();
@@ -2605,6 +2839,7 @@ document.addEventListener('keydown', e => {
   billboards = await loadBillboards();
   document.getElementById('countValue').textContent = billboards.length;
   document.getElementById('fabCount').textContent = billboards.length;
+  populateAreaFilter();
   renderListings();
   boot();
   if (!isNarrow() && billboards.length) setTimeout(() => selectBillboard(billboards[0].id), 350);
