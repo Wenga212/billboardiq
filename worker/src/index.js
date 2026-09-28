@@ -94,16 +94,31 @@ async function computeRoutes(env, origin, dest, trafficAware, fieldMask) {
 }
 
 // Resolves and caches a billboard's fixed traffic segment — two points
-// SEGMENT_OFFSET_METERS apart, straddling its coordinates. If `facing` is
-// set (from the Add Billboard form), the segment runs along that bearing.
-// If not, four cardinal bearings are probed and whichever one's actual
-// routed distance is closest to the straight-line distance is kept — that's
-// the one following a real nearby road rather than detouring, so a missing
-// `facing` never requires a manual input to work around.
+// SEGMENT_OFFSET_METERS apart, straddling its coordinates. Every one of the
+// 4 cardinal bearings is always probed, plus the billboard's declared
+// `facing` if it isn't already one of those 4 (rare — most facings ARE
+// cardinal), and whichever candidate's actual routed distance is closest to
+// the straight-line distance ("detour" ratio) is kept — that's the one most
+// likely following a real, direct nearby road rather than a detour through
+// a backstreet.
+//
+// Previously, a declared `facing` short-circuited this to a single
+// unvalidated bearing — fine when it happened to land on the real road, but
+// for several billboards it landed on a quiet perpendicular/backstreet stub
+// instead of the actual road they front, so their live traffic duration sat
+// at-or-below Google's own free-flow baseline almost every sample. Once a
+// reading comes back at or below that baseline, sampleLiveTraffic's
+// Math.max(0, ...) clamp flattens it to a flat "free" score — real
+// congestion on the *correct* road never gets a chance to show up. Always
+// cross-checking every candidate (facing included) fixes that going
+// forward without touching any already-collected traffic_snapshots rows —
+// existing history stays exactly as recorded; only a billboard's cached
+// segment (and everything sampled from here on) changes.
 async function resolveSegment(env, billboard) {
-  const bearings = (billboard.facing && COMPASS_BEARINGS[billboard.facing] !== undefined)
-    ? [COMPASS_BEARINGS[billboard.facing]]
-    : [0, 90, 180, 270];
+  const bearings = [0, 90, 180, 270];
+  if (billboard.facing && COMPASS_BEARINGS[billboard.facing] !== undefined && !bearings.includes(COMPASS_BEARINGS[billboard.facing])) {
+    bearings.push(COMPASS_BEARINGS[billboard.facing]);
+  }
 
   let best = null;
   for (const bearing of bearings) {
